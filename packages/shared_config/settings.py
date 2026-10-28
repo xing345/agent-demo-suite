@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     model_api_key: str = ""
     model_name: str = ""
     model_timeout_seconds: float = Field(default=60, ge=1, le=600)
+    model_retries: int = Field(default=1, ge=0, le=5)
+    model_price_table: str = ""
     mcp_remote_url: str = ""
     mcp_remote_token: str = ""
     mcp_fallback_to_local: bool = False

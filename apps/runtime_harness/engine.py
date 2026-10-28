@@ -23,7 +23,7 @@ from packages.event_store import (
     TaskRecord,
 )
 from packages.mcp_server import MCPRemoteClient, RemoteMCPError
-from packages.model_gateway import ModelGateway
+from packages.model_gateway import SyncModelGateway
 from packages.planner import PlannedTask, TaskPlan, topological_order
 from packages.runtime.approvals import ApprovalRecord, ApprovalStore
 from packages.runtime.checkpoint import build_checkpoint_state
@@ -69,7 +69,7 @@ class RuntimeEngine:
         self,
         store: EventStore,
         *,
-        model_gateway: ModelGateway | None = None,
+        model_gateway: SyncModelGateway | None = None,
         mcp_client: MCPRemoteClient | None = None,
         mcp_fallback_to_local: bool = False,
         replanner: Any | None = None,
@@ -451,7 +451,7 @@ class RuntimeEngine:
             gateway = self.model_gateway
 
             def call_model(payload: dict[str, Any]) -> dict[str, Any]:
-                content = gateway.generate_sync(  # type: ignore[attr-defined]
+                content = gateway.generate_sync(
                     [
                         {
                             "role": "system",

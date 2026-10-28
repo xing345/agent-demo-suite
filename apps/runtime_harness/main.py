@@ -1,3 +1,4 @@
+import json as _json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -16,7 +17,11 @@ from packages.mcp_server import (
     TokenAuthenticator,
     create_mcp_router,
 )
-from packages.model_gateway import OpenAICompatibleGateway
+from packages.model_gateway import (
+    ModelRouter,
+    OpenAICompatibleGateway,
+    PriceTable,
+)
 from packages.planner import (
     DeterministicPlanner,
     ModelPlanner,
@@ -58,6 +63,16 @@ def build_store() -> EventStore:
     return InMemoryEventStore()
 
 
+def build_price_table() -> PriceTable:
+    raw = settings.model_price_table.strip()
+    if not raw:
+        return PriceTable()
+    parsed = _json.loads(raw)
+    return PriceTable(
+        {str(name): (float(pair[0]), float(pair[1])) for name, pair in parsed.items()}
+    )
+
+
 def build_model_gateway() -> OpenAICompatibleGateway | None:
     if settings.model_provider.lower() not in {"openai", "openai_compatible"}:
         return None
@@ -70,6 +85,7 @@ def build_model_gateway() -> OpenAICompatibleGateway | None:
         api_key=settings.model_api_key,
         model=settings.model_name,
         timeout_seconds=settings.model_timeout_seconds,
+        prices=build_price_table(),
     )
 
 
@@ -90,7 +106,10 @@ def build_mcp_client() -> MCPRemoteClient | None:
 
 
 store = build_store()
-model_gateway = build_model_gateway()
+_provider = build_model_gateway()
+model_gateway = (
+    ModelRouter([_provider], retries=settings.model_retries) if _provider is not None else None
+)
 _offline_planner = DeterministicPlanner()
 planner = (
     ModelPlanner(model_gateway, fallback=_offline_planner)
