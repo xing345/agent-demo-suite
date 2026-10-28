@@ -1,0 +1,15 @@
+{"doc_id": "runtime", "text": "The runtime engine executes task plans in dependency order, records events for every task and saves a checkpoint when a task fails."}
+{"doc_id": "planner", "text": "The planner produces a task plan and validates duplicate ids, unknown dependencies, cycles and depth limits before execution."}
+{"doc_id": "mcp", "text": "The MCP server exposes tools over JSON-RPC with bearer token authentication, schema validation and SSRF protection."}
+{"doc_id": "approvals", "text": "Dangerous tools require human approval stored in the event log with a time-to-live and explicit reject support."}
+{"doc_id": "store", "text": "The event store persists sessions, runs, tasks, events and checkpoints in memory or inside SQLite."}
+{"doc_id": "observability", "text": "Observability derives a span tree, run summary, JSONL export and Prometheus metrics from the event log."}
+{"doc_id": "rag", "text": "RAG chunks documents, embeds them with a hashing embedder and reports recall at k, MRR and nDCG for evaluation."}
+{"doc_id": "lora", "text": "The multimodal app manages dataset versions, train validation splits and LoRA experiment records."}
+{"doc_id": "security", "text": "Security policies block private addresses, block metadata hosts and require HTTPS for remote endpoints."}
+{"doc_id": "checkpoint", "text": "A checkpoint records completed task ids, outputs, attempts, planner version and model version for recovery."}
+{"doc_id": "deployment", "text": "Deployment reads events and metrics from the runtime, exports logs and reports run summaries to dashboards."}
+{"doc_id": "testing", "text": "Testing covers failure handling, resume after a failed checkpoint and dependency order in the runtime engine."}
+{"doc_id": "api", "text": "The HTTP API uses bearer token authentication and schema validation for every request body."}
+{"doc_id": "data", "text": "Data preparation manages dataset versions, validation splits and experiment records for training."}
+{"doc_id": "benchmark", "text": "The benchmark measures recall and MRR of the retrieval pipeline against a small golden set."}

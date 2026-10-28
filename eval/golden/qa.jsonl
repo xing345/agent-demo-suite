@@ -1,0 +1,10 @@
+{"query": "dependency order checkpoint when a task fails", "gold_doc_id": "runtime", "synthetic": true}
+{"query": "duplicate ids unknown dependencies cycles depth limits", "gold_doc_id": "planner", "synthetic": true}
+{"query": "JSON-RPC bearer token authentication", "gold_doc_id": "mcp", "synthetic": true}
+{"query": "human approval time-to-live reject", "gold_doc_id": "approvals", "synthetic": true}
+{"query": "SQLite sessions runs tasks checkpoints", "gold_doc_id": "store", "synthetic": true}
+{"query": "span tree Prometheus metrics JSONL export", "gold_doc_id": "observability", "synthetic": true}
+{"query": "recall at k MRR nDCG hashing embedder", "gold_doc_id": "rag", "synthetic": true}
+{"query": "dataset versions train validation splits LoRA experiment", "gold_doc_id": "lora", "synthetic": true}
+{"query": "private addresses metadata hosts HTTPS", "gold_doc_id": "security", "synthetic": true}
+{"query": "planner version model version recovery", "gold_doc_id": "checkpoint", "synthetic": true}
