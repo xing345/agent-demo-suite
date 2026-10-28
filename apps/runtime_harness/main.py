@@ -1,0 +1,206 @@
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+
+from packages.event_store import EventRecord, InMemoryEventStore, SQLiteEventStore, TaskRecord
+from packages.mcp_server import MCPRemoteClient, MCPServer, create_mcp_router
+from packages.model_gateway import OpenAICompatibleGateway
+from packages.shared_config import get_settings
+from packages.tool_registry import ToolDefinition
+from packages.skill_registry import SkillDefinition, SkillRegistry
+
+from .engine import PlanExecutionResult, RuntimeEngine, ToolCallResult
+from .planner import DeterministicPlanner
+from .schemas import (
+    CheckpointRequest,
+    CreateRunRequest,
+    CreateRunResponse,
+    ToolCallRequest,
+)
+
+app = FastAPI(title="Agent Runtime & Harness Demo", version="0.1.0")
+settings = get_settings()
+
+
+def build_store() -> InMemoryEventStore | SQLiteEventStore:
+    settings = get_settings()
+    if settings.event_store_backend.lower() == "sqlite":
+        database = Path(settings.event_store_path)
+        database.parent.mkdir(parents=True, exist_ok=True)
+        return SQLiteEventStore(database)
+    return InMemoryEventStore()
+
+
+def build_model_gateway() -> OpenAICompatibleGateway | None:
+    if settings.model_provider.lower() not in {"openai", "openai_compatible"}:
+        return None
+    if not settings.model_base_url or not settings.model_name:
+        raise ValueError("MODEL_BASE_URL and MODEL_NAME are required for an OpenAI-compatible provider")
+    return OpenAICompatibleGateway(
+        base_url=settings.model_base_url,
+        api_key=settings.model_api_key,
+        model=settings.model_name,
+        timeout_seconds=settings.model_timeout_seconds,
+    )
+
+
+def build_mcp_client() -> MCPRemoteClient | None:
+    if not settings.mcp_remote_url:
+        return None
+    return MCPRemoteClient(
+        settings.mcp_remote_url,
+        token=settings.mcp_remote_token,
+        timeout_seconds=settings.model_timeout_seconds,
+    )
+
+
+store = build_store()
+engine = RuntimeEngine(
+    store,
+    model_gateway=build_model_gateway(),
+    mcp_client=build_mcp_client(),
+)
+planner = DeterministicPlanner()
+skills = SkillRegistry()
+skills.register(
+    SkillDefinition(
+        name="repo_diagnosis",
+        description="Diagnose a repository issue",
+        prompt_template="Read {path} and summarize the issue.",
+        tool_names=["read_context"],
+    )
+)
+mcp_server = MCPServer()
+mcp_server.register_tool(
+    ToolDefinition(
+        name="read_context",
+        description="Read context through the MCP adapter",
+        source="mcp",
+        input_schema={"required": ["query"]},
+    ),
+    lambda payload: {"result": payload["query"]},
+)
+engine.register_tool(
+    ToolDefinition(name="read_context", permission="read"),
+    lambda payload: {"context": payload},
+)
+engine.register_tool(
+    ToolDefinition(
+        name="write_demo_file",
+        permission="dangerous",
+        requires_human_confirmation=True,
+    ),
+    lambda payload: {"accepted": True, "target": payload.get("path", "")},
+)
+mcp_router = create_mcp_router(mcp_server)
+app.include_router(mcp_router)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/runs", response_model=CreateRunResponse, status_code=201)
+def create_run(request: CreateRunRequest) -> CreateRunResponse:
+    run = engine.start_run(request.task)
+    plan = planner.plan(request.task)
+    run.metadata["plan"] = plan.model_dump(mode="json")
+    for task in plan.tasks:
+        store.create_task(
+            TaskRecord(
+                run_id=run.run_id,
+                name=task.name,
+                metadata={
+                    "description": task.description,
+                    "depends_on": task.depends_on,
+                },
+            )
+        )
+    store.append_event(
+        EventRecord(
+            run_id=run.run_id,
+            event_type="plan.created",
+            payload={"tasks": [task.model_dump(mode="json") for task in plan.tasks]},
+        )
+    )
+    return CreateRunResponse(
+        session_id=run.session_id,
+        run_id=run.run_id,
+        status=run.status,
+    )
+
+
+@app.get("/runs/{run_id}/events")
+def list_run_events(run_id: str) -> dict[str, object]:
+    if run_id not in store.runs:
+        raise HTTPException(status_code=404, detail="run not found")
+    return {"run_id": run_id, "events": engine.trace(run_id)}
+
+
+@app.post("/runs/{run_id}/tools/{tool_name}", response_model=ToolCallResult)
+def call_tool(
+    run_id: str,
+    tool_name: str,
+    request: ToolCallRequest,
+) -> ToolCallResult:
+    try:
+        return engine.call_tool(run_id, tool_name, request.payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/runs/{run_id}/approvals/{approval_id}", response_model=ToolCallResult)
+def approve_tool(run_id: str, approval_id: str | None) -> ToolCallResult:
+    try:
+        return engine.approve(run_id, approval_id)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/runs/{run_id}/execute", response_model=PlanExecutionResult)
+def execute_run(run_id: str) -> PlanExecutionResult:
+    try:
+        run = engine.get_run(run_id)
+        plan = planner.plan(str(run.metadata["task"]))
+        return engine.execute_plan(run_id, plan)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/planner")
+def plan_task(goal: str):
+    return planner.plan(goal)
+
+
+@app.get("/skills")
+def list_skills():
+    return skills.list()
+
+
+def list_mcp_tools():
+    return mcp_server.list_tools()
+
+
+@app.post("/runs/{run_id}/checkpoints")
+def save_checkpoint(run_id: str, request: CheckpointRequest):
+    try:
+        return engine.save_checkpoint(run_id, request.state)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/runs/{run_id}/resume")
+def restore_checkpoint(run_id: str):
+    try:
+        return engine.resume_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def run() -> None:
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=8001)
