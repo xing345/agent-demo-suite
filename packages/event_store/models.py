@@ -4,7 +4,16 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-Status = Literal["created", "queued", "running", "paused", "completed", "failed", "cancelled"]
+Status = Literal[
+    "created",
+    "queued",
+    "running",
+    "waiting_approval",
+    "paused",
+    "completed",
+    "failed",
+    "cancelled",
+]
 
 
 def utc_now() -> datetime:

@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     runtime_port: int = Field(default=8001, ge=1, le=65535)
     multimodal_host: str = "127.0.0.1"
     multimodal_port: int = Field(default=8002, ge=1, le=65535)
+    executor_concurrency: int = Field(default=1, ge=1, le=16)
+    max_replans: int = Field(default=2, ge=0, le=5)
+    approval_ttl_seconds: int = Field(default=900, ge=1, le=86400)
 
 
 @lru_cache(maxsize=1)

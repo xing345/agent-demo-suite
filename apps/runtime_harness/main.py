@@ -15,11 +15,13 @@ from packages.planner import (
     DeterministicPlanner,
     ModelPlanner,
     PlanValidationError,
+    Replanner,
     TaskPlan,
     plan_depth,
     topological_order,
     validate_plan,
 )
+from packages.runtime import ApprovalExpired
 from packages.shared_config import get_settings
 from packages.skill_registry import SkillDefinition, SkillRegistry
 from packages.tool_registry import ToolDefinition
@@ -77,17 +79,20 @@ def build_mcp_client() -> MCPRemoteClient | None:
 
 store = build_store()
 model_gateway = build_model_gateway()
-engine = RuntimeEngine(
-    store,
-    model_gateway=model_gateway,
-    mcp_client=build_mcp_client(),
-    mcp_fallback_to_local=settings.mcp_fallback_to_local,
-)
 _offline_planner = DeterministicPlanner()
 planner = (
     ModelPlanner(model_gateway, fallback=_offline_planner)
     if model_gateway is not None
     else _offline_planner
+)
+engine = RuntimeEngine(
+    store,
+    model_gateway=model_gateway,
+    mcp_client=build_mcp_client(),
+    mcp_fallback_to_local=settings.mcp_fallback_to_local,
+    replanner=Replanner(planner, max_replans=settings.max_replans),
+    max_concurrency=settings.executor_concurrency,
+    approval_ttl_seconds=settings.approval_ttl_seconds,
 )
 skills = SkillRegistry()
 skills.register(
@@ -162,6 +167,52 @@ def list_run_events(run_id: str) -> dict[str, object]:
     return {"run_id": run_id, "events": engine.trace(run_id)}
 
 
+@app.get("/runs/{run_id}")
+def get_run(run_id: str) -> dict[str, object]:
+    try:
+        return engine.describe_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+
+
+@app.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: str) -> dict[str, object]:
+    try:
+        run = engine.cancel_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "run_id": run.run_id,
+        "status": run.status,
+        "cancel_requested": bool(run.metadata.get("cancel_requested")),
+    }
+
+
+@app.post("/runs/{run_id}/approvals/{approval_id}/reject")
+def reject_approval(
+    run_id: str,
+    approval_id: str,
+    reason: str | None = None,
+) -> dict[str, object]:
+    try:
+        record = engine.reject_approval(run_id, approval_id, reason)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ApprovalExpired as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "approval_id": record.approval_id,
+        "status": record.status,
+        "run_status": engine.get_run(run_id).status,
+    }
+
+
 @app.post("/runs/{run_id}/tools/{tool_name}", response_model=ToolCallResult)
 def call_tool(
     run_id: str,
@@ -180,6 +231,8 @@ def call_tool(
 def approve_tool(run_id: str, approval_id: str | None) -> ToolCallResult:
     try:
         return engine.approve(run_id, approval_id)
+    except ApprovalExpired as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except InvalidStateTransition as exc:

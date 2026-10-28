@@ -51,6 +51,9 @@ class InMemoryEventStore:
         except KeyError as exc:
             raise KeyError(f"unknown task: {task_id}") from exc
 
+    def list_run_ids(self) -> list[str]:
+        return list(self.runs)
+
     def update_run(self, record: RunRecord) -> RunRecord:
         if record.run_id not in self.runs:
             raise KeyError(f"unknown run: {record.run_id}")
@@ -91,7 +94,7 @@ class SQLiteEventStore:
 
     def __init__(self, database: str | Path) -> None:
         self.database = str(database)
-        self.connection = sqlite3.connect(self.database)
+        self.connection = sqlite3.connect(self.database, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self.sessions: dict[str, SessionRecord] = {}
         self.runs: dict[str, RunRecord] = {}
@@ -184,6 +187,9 @@ class SQLiteEventStore:
             return self.tasks[task_id]
         except KeyError as exc:
             raise KeyError(f"unknown task: {task_id}") from exc
+
+    def list_run_ids(self) -> list[str]:
+        return list(self.runs)
 
     def update_run(self, record: RunRecord) -> RunRecord:
         cursor = self.connection.execute(

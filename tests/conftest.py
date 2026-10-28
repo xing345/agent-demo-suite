@@ -21,5 +21,4 @@ def isolated_runtime_state() -> Iterator[None]:
         mapping = getattr(store, attribute, None)
         if mapping is not None:
             mapping.clear()
-    runtime_main.engine.pending.clear()
     yield

@@ -19,7 +19,9 @@ def test_dangerous_tool_waits_for_human_approval() -> None:
 
     assert result.status == "awaiting_approval"
     assert result.approval_id is not None
-    assert engine.get_run(run.run_id).status == "paused"
+    # Stage 3 refined the status: a pending approval is `waiting_approval`,
+    # while `paused` is reserved for checkpoint pauses.
+    assert engine.get_run(run.run_id).status == "waiting_approval"
     assert [event.event_type for event in engine.trace(run.run_id)] == [
         "run.created",
         "approval.requested",
