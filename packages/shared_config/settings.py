@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     executor_concurrency: int = Field(default=1, ge=1, le=16)
     max_replans: int = Field(default=2, ge=0, le=5)
     approval_ttl_seconds: int = Field(default=900, ge=1, le=86400)
+    upload_dir: str = "data/uploads"
+    max_upload_bytes: int = Field(default=5_242_880, ge=1, le=100_000_000)
 
 
 @lru_cache(maxsize=1)
