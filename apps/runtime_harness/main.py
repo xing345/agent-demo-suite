@@ -9,7 +9,13 @@ from packages.event_store import (
     RunRecord,
     SQLiteEventStore,
 )
-from packages.mcp_server import MCPRemoteClient, MCPServer, create_mcp_router
+from packages.mcp_server import (
+    MCPRemoteClient,
+    MCPServer,
+    SecurityPolicy,
+    TokenAuthenticator,
+    create_mcp_router,
+)
 from packages.model_gateway import OpenAICompatibleGateway
 from packages.planner import (
     DeterministicPlanner,
@@ -74,6 +80,12 @@ def build_mcp_client() -> MCPRemoteClient | None:
         settings.mcp_remote_url,
         token=settings.mcp_remote_token,
         timeout_seconds=settings.model_timeout_seconds,
+        protocol=settings.mcp_protocol,
+        retries=settings.mcp_retries,
+        policy=SecurityPolicy(
+            allow_private=settings.mcp_allow_insecure,
+            require_https=settings.mcp_require_https,
+        ),
     )
 
 
@@ -125,7 +137,14 @@ engine.register_tool(
     ),
     lambda payload: {"accepted": True, "target": payload.get("path", "")},
 )
-mcp_router = create_mcp_router(mcp_server)
+mcp_router = create_mcp_router(
+    mcp_server,
+    authenticator=(
+        TokenAuthenticator(settings.mcp_server_token)
+        if settings.mcp_server_token
+        else None
+    ),
+)
 app.include_router(mcp_router)
 
 

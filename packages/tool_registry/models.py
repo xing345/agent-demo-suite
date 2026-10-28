@@ -9,6 +9,7 @@ class ToolDefinition(BaseModel):
     name: str = Field(min_length=1)
     description: str = ""
     source: ToolSource = "builtin"
+    version: str = Field(default="1", min_length=1)
     input_schema: dict[str, Any] = Field(default_factory=dict)
     output_schema: dict[str, Any] = Field(default_factory=dict)
     permission: Literal["read", "write", "dangerous"] = "read"

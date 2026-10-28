@@ -9,6 +9,7 @@ description = "Agent Runtime and multimodal LoRA interview demo skeleton"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
+    "jsonschema>=4.20",
     "pydantic>=2.7",
     "pydantic-settings>=2.4",
     "uvicorn>=0.30",

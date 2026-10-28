@@ -29,6 +29,7 @@ RUNTIME_PATHS = {
     "/runs/{run_id}/tools/{tool_name}",
     "/mcp/tools",
     "/mcp/tools/{tool_name}",
+    "/mcp",
 }
 
 

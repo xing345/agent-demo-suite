@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     mcp_remote_url: str = ""
     mcp_remote_token: str = ""
     mcp_fallback_to_local: bool = False
+    mcp_protocol: str = "rest"
+    mcp_retries: int = Field(default=1, ge=0, le=5)
+    mcp_server_token: str = ""
+    mcp_allow_insecure: bool = False
+    mcp_require_https: bool = False
     runtime_host: str = "127.0.0.1"
     runtime_port: int = Field(default=8001, ge=1, le=65535)
     multimodal_host: str = "127.0.0.1"
