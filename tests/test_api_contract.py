@@ -15,9 +15,11 @@ RUNTIME_PATHS = {
     "/planner",
     "/skills",
     "/tools",
+    "/plans/validate",
     "/runs",
     "/runs/{run_id}/events",
     "/runs/{run_id}/execute",
+    "/runs/{run_id}/plan",
     "/runs/{run_id}/checkpoints",
     "/runs/{run_id}/resume",
     "/runs/{run_id}/approvals/{approval_id}",
@@ -54,7 +56,7 @@ def test_events_response_shape() -> None:
 def test_planner_response_shape() -> None:
     body = client.get("/planner", params={"goal": "读取代码并分析问题"}).json()
 
-    assert set(body) == {"goal", "tasks"}
+    assert set(body) >= {"goal", "tasks"}
     assert set(body["tasks"][0]) >= {"task_id", "name", "description", "depends_on"}
 
 

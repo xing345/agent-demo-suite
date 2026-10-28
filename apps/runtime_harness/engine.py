@@ -16,9 +16,8 @@ from packages.event_store import (
 )
 from packages.mcp_server import MCPRemoteClient, RemoteMCPError
 from packages.model_gateway import ModelGateway
+from packages.planner import PlannedTask, TaskPlan, topological_order
 from packages.tool_registry import ToolDefinition, ToolRegistry
-
-from .planner import PlannedTask, TaskPlan
 
 TERMINAL_STATUSES: frozenset[str] = frozenset({"completed", "failed", "cancelled"})
 
@@ -185,6 +184,11 @@ class RuntimeEngine:
             raise InvalidStateTransition(
                 f"run {run_id} is already {run.status} and cannot be executed again"
             )
+
+        # Reject illegal plans before touching run state.
+        ordered_ids = topological_order(plan)
+        by_id = {task.task_id: task for task in plan.tasks}
+
         if run.status in {"created", "queued"}:
             self._set_run_status(run, "running")
 
@@ -200,7 +204,8 @@ class RuntimeEngine:
                 completed.add(prior.task_id)
                 outputs[prior.task_id] = prior.metadata.get("output", {})
 
-        for planned_task in plan.tasks:
+        for task_id in ordered_ids:
+            planned_task = by_id[task_id]
             missing = [
                 dependency
                 for dependency in planned_task.depends_on

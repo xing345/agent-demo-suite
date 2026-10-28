@@ -11,6 +11,15 @@ from packages.event_store import (
 )
 from packages.mcp_server import MCPRemoteClient, MCPServer, create_mcp_router
 from packages.model_gateway import OpenAICompatibleGateway
+from packages.planner import (
+    DeterministicPlanner,
+    ModelPlanner,
+    PlanValidationError,
+    TaskPlan,
+    plan_depth,
+    topological_order,
+    validate_plan,
+)
 from packages.shared_config import get_settings
 from packages.skill_registry import SkillDefinition, SkillRegistry
 from packages.tool_registry import ToolDefinition
@@ -21,7 +30,6 @@ from .engine import (
     RuntimeEngine,
     ToolCallResult,
 )
-from .planner import DeterministicPlanner, TaskPlan
 from .schemas import (
     CheckpointRequest,
     CreateRunRequest,
@@ -68,13 +76,19 @@ def build_mcp_client() -> MCPRemoteClient | None:
 
 
 store = build_store()
+model_gateway = build_model_gateway()
 engine = RuntimeEngine(
     store,
-    model_gateway=build_model_gateway(),
+    model_gateway=model_gateway,
     mcp_client=build_mcp_client(),
     mcp_fallback_to_local=settings.mcp_fallback_to_local,
 )
-planner = DeterministicPlanner()
+_offline_planner = DeterministicPlanner()
+planner = (
+    ModelPlanner(model_gateway, fallback=_offline_planner)
+    if model_gateway is not None
+    else _offline_planner
+)
 skills = SkillRegistry()
 skills.register(
     SkillDefinition(
@@ -205,6 +219,28 @@ def plan_task(goal: str):
 @app.get("/skills")
 def list_skills():
     return skills.list()
+
+
+@app.post("/plans/validate")
+def validate_plan_endpoint(plan: TaskPlan) -> dict[str, object]:
+    try:
+        order = topological_order(plan)
+        validate_plan(plan)
+    except PlanValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.to_dict()) from exc
+    return {"valid": True, "task_order": order, "depth": plan_depth(plan)}
+
+
+@app.get("/runs/{run_id}/plan")
+def get_run_plan(run_id: str) -> dict[str, object]:
+    try:
+        run = engine.get_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+    stored = run.metadata.get("plan")
+    if not isinstance(stored, dict):
+        raise HTTPException(status_code=404, detail="plan not found for run")
+    return stored
 
 
 @app.get("/tools", response_model=list[ToolDefinition])
