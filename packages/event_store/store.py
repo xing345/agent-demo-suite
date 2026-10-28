@@ -1,6 +1,6 @@
-from collections import defaultdict
 import json
 import sqlite3
+from collections import defaultdict
 from pathlib import Path
 
 from .models import (
@@ -38,6 +38,33 @@ class InMemoryEventStore:
             raise KeyError(f"unknown run: {record.run_id}")
         self.tasks[record.task_id] = record
         return record
+
+    def get_run(self, run_id: str) -> RunRecord:
+        try:
+            return self.runs[run_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown run: {run_id}") from exc
+
+    def get_task(self, task_id: str) -> TaskRecord:
+        try:
+            return self.tasks[task_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown task: {task_id}") from exc
+
+    def update_run(self, record: RunRecord) -> RunRecord:
+        if record.run_id not in self.runs:
+            raise KeyError(f"unknown run: {record.run_id}")
+        self.runs[record.run_id] = record
+        return record
+
+    def update_task(self, record: TaskRecord) -> TaskRecord:
+        if record.task_id not in self.tasks:
+            raise KeyError(f"unknown task: {record.task_id}")
+        self.tasks[record.task_id] = record
+        return record
+
+    def list_tasks(self, run_id: str) -> list[TaskRecord]:
+        return [task for task in self.tasks.values() if task.run_id == run_id]
 
     def append_event(self, record: EventRecord) -> EventRecord:
         if record.run_id not in self.runs:
@@ -108,11 +135,11 @@ class SQLiteEventStore:
             record = SessionRecord.model_validate_json(row["payload"])
             self.sessions[record.session_id] = record
         for row in self.connection.execute("SELECT payload FROM runs"):
-            record = RunRecord.model_validate_json(row["payload"])
-            self.runs[record.run_id] = record
+            run = RunRecord.model_validate_json(row["payload"])
+            self.runs[run.run_id] = run
         for row in self.connection.execute("SELECT payload FROM tasks"):
-            record = TaskRecord.model_validate_json(row["payload"])
-            self.tasks[record.task_id] = record
+            task = TaskRecord.model_validate_json(row["payload"])
+            self.tasks[task.task_id] = task
 
     def create_session(self, record: SessionRecord | None = None) -> SessionRecord:
         item = record or SessionRecord()
@@ -145,6 +172,47 @@ class SQLiteEventStore:
         self.connection.commit()
         self.tasks[record.task_id] = record
         return record
+
+    def get_run(self, run_id: str) -> RunRecord:
+        try:
+            return self.runs[run_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown run: {run_id}") from exc
+
+    def get_task(self, task_id: str) -> TaskRecord:
+        try:
+            return self.tasks[task_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown task: {task_id}") from exc
+
+    def update_run(self, record: RunRecord) -> RunRecord:
+        cursor = self.connection.execute(
+            "UPDATE runs SET session_id = ?, payload = ? WHERE run_id = ?",
+            (record.session_id, record.model_dump_json(), record.run_id),
+        )
+        if cursor.rowcount == 0:
+            raise KeyError(f"unknown run: {record.run_id}")
+        self.connection.commit()
+        self.runs[record.run_id] = record
+        return record
+
+    def update_task(self, record: TaskRecord) -> TaskRecord:
+        cursor = self.connection.execute(
+            "UPDATE tasks SET payload = ? WHERE task_id = ?",
+            (record.model_dump_json(), record.task_id),
+        )
+        if cursor.rowcount == 0:
+            raise KeyError(f"unknown task: {record.task_id}")
+        self.connection.commit()
+        self.tasks[record.task_id] = record
+        return record
+
+    def list_tasks(self, run_id: str) -> list[TaskRecord]:
+        rows = self.connection.execute(
+            "SELECT payload FROM tasks WHERE run_id = ?",
+            (run_id,),
+        )
+        return [TaskRecord.model_validate_json(row["payload"]) for row in rows]
 
     def append_event(self, record: EventRecord) -> EventRecord:
         if record.run_id not in self.runs:

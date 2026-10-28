@@ -2,15 +2,26 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
-from packages.event_store import EventRecord, InMemoryEventStore, SQLiteEventStore, TaskRecord
+from packages.event_store import (
+    EventRecord,
+    EventStore,
+    InMemoryEventStore,
+    RunRecord,
+    SQLiteEventStore,
+)
 from packages.mcp_server import MCPRemoteClient, MCPServer, create_mcp_router
 from packages.model_gateway import OpenAICompatibleGateway
 from packages.shared_config import get_settings
-from packages.tool_registry import ToolDefinition
 from packages.skill_registry import SkillDefinition, SkillRegistry
+from packages.tool_registry import ToolDefinition
 
-from .engine import PlanExecutionResult, RuntimeEngine, ToolCallResult
-from .planner import DeterministicPlanner
+from .engine import (
+    InvalidStateTransition,
+    PlanExecutionResult,
+    RuntimeEngine,
+    ToolCallResult,
+)
+from .planner import DeterministicPlanner, TaskPlan
 from .schemas import (
     CheckpointRequest,
     CreateRunRequest,
@@ -22,7 +33,7 @@ app = FastAPI(title="Agent Runtime & Harness Demo", version="0.1.0")
 settings = get_settings()
 
 
-def build_store() -> InMemoryEventStore | SQLiteEventStore:
+def build_store() -> EventStore:
     settings = get_settings()
     if settings.event_store_backend.lower() == "sqlite":
         database = Path(settings.event_store_path)
@@ -35,7 +46,9 @@ def build_model_gateway() -> OpenAICompatibleGateway | None:
     if settings.model_provider.lower() not in {"openai", "openai_compatible"}:
         return None
     if not settings.model_base_url or not settings.model_name:
-        raise ValueError("MODEL_BASE_URL and MODEL_NAME are required for an OpenAI-compatible provider")
+        raise ValueError(
+            "MODEL_BASE_URL and MODEL_NAME are required for an OpenAI-compatible provider"
+        )
     return OpenAICompatibleGateway(
         base_url=settings.model_base_url,
         api_key=settings.model_api_key,
@@ -59,6 +72,7 @@ engine = RuntimeEngine(
     store,
     model_gateway=build_model_gateway(),
     mcp_client=build_mcp_client(),
+    mcp_fallback_to_local=settings.mcp_fallback_to_local,
 )
 planner = DeterministicPlanner()
 skills = SkillRegistry()
@@ -105,18 +119,12 @@ def health() -> dict[str, str]:
 def create_run(request: CreateRunRequest) -> CreateRunResponse:
     run = engine.start_run(request.task)
     plan = planner.plan(request.task)
+
+    run.metadata.update(request.metadata)
+    run.metadata["task"] = request.task
     run.metadata["plan"] = plan.model_dump(mode="json")
-    for task in plan.tasks:
-        store.create_task(
-            TaskRecord(
-                run_id=run.run_id,
-                name=task.name,
-                metadata={
-                    "description": task.description,
-                    "depends_on": task.depends_on,
-                },
-            )
-        )
+    store.update_run(run)
+
     store.append_event(
         EventRecord(
             run_id=run.run_id,
@@ -133,8 +141,10 @@ def create_run(request: CreateRunRequest) -> CreateRunResponse:
 
 @app.get("/runs/{run_id}/events")
 def list_run_events(run_id: str) -> dict[str, object]:
-    if run_id not in store.runs:
-        raise HTTPException(status_code=404, detail="run not found")
+    try:
+        engine.get_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
     return {"run_id": run_id, "events": engine.trace(run_id)}
 
 
@@ -148,6 +158,8 @@ def call_tool(
         return engine.call_tool(run_id, tool_name, request.payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/runs/{run_id}/approvals/{approval_id}", response_model=ToolCallResult)
@@ -156,23 +168,38 @@ def approve_tool(run_id: str, approval_id: str | None) -> ToolCallResult:
         return engine.approve(run_id, approval_id)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/runs/{run_id}/execute", response_model=PlanExecutionResult)
 def execute_run(run_id: str) -> PlanExecutionResult:
     try:
         run = engine.get_run(run_id)
-        plan = planner.plan(str(run.metadata["task"]))
+        plan = load_plan(run)
         return engine.execute_plan(run_id, plan)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def load_plan(run: RunRecord) -> TaskPlan:
+    """Reuse the plan frozen at creation time so task ids stay stable."""
+    stored = run.metadata.get("plan")
+    if isinstance(stored, dict):
+        return TaskPlan.model_validate(stored)
+    return planner.plan(str(run.metadata.get("task", "")))
+
+
 @app.get("/planner")
 def plan_task(goal: str):
-    return planner.plan(goal)
+    try:
+        return planner.plan(goal)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/skills")
@@ -180,7 +207,9 @@ def list_skills():
     return skills.list()
 
 
-def list_mcp_tools():
+@app.get("/tools", response_model=list[ToolDefinition])
+def list_mcp_tools() -> list[ToolDefinition]:
+    """Alias of ``/mcp/tools`` kept for local inspection."""
     return mcp_server.list_tools()
 
 
@@ -190,6 +219,8 @@ def save_checkpoint(run_id: str, request: CheckpointRequest):
         return engine.save_checkpoint(run_id, request.state)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/runs/{run_id}/resume")
@@ -198,9 +229,11 @@ def restore_checkpoint(run_id: str):
         return engine.resume_run(run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def run() -> None:
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    uvicorn.run(app, host=settings.runtime_host, port=settings.runtime_port)
