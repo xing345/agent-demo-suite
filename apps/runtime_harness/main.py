@@ -2,6 +2,7 @@ import json as _json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
 
 from packages.event_store import (
     EventRecord,
@@ -21,6 +22,12 @@ from packages.model_gateway import (
     ModelRouter,
     OpenAICompatibleGateway,
     PriceTable,
+)
+from packages.observability import (
+    build_span_tree,
+    export_jsonl,
+    render_prometheus,
+    summarize_run,
 )
 from packages.planner import (
     DeterministicPlanner,
@@ -211,6 +218,45 @@ def get_run(run_id: str) -> dict[str, object]:
         return engine.describe_run(run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="run not found") from exc
+
+
+@app.get("/runs/{run_id}/trace")
+def get_run_trace(run_id: str) -> dict[str, object]:
+    try:
+        run = engine.get_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+    tree = build_span_tree(run, engine.trace(run_id))
+    return {"run_id": run_id, "spans": [tree.to_dict()]}
+
+
+@app.get("/runs/{run_id}/summary")
+def get_run_summary(run_id: str) -> dict[str, object]:
+    try:
+        run = engine.get_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+    return summarize_run(run, engine.trace(run_id)).to_dict()
+
+
+@app.get("/runs/{run_id}/events/export")
+def export_run_events(run_id: str) -> PlainTextResponse:
+    try:
+        engine.get_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+    return PlainTextResponse(
+        export_jsonl(engine.trace(run_id)),
+        media_type="application/x-ndjson",
+    )
+
+
+@app.get("/metrics")
+def prometheus_metrics() -> PlainTextResponse:
+    return PlainTextResponse(
+        render_prometheus(store),
+        media_type="text/plain; version=0.0.4",
+    )
 
 
 @app.post("/runs/{run_id}/cancel")
