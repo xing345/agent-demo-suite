@@ -7,6 +7,7 @@ Skill Registry + Model Provider + HITL + Checkpoint + RAG + 多模态数据处�
 
 | 模块 | 职责 |
 |---|---|
+| `apps/console` | 统一控制台：挂载下面两个应用并提供单页界面 |
 | `apps/runtime_harness` | Runtime API：Planner、执行器、审批、取消、恢复、观测端点 |
 | `apps/multimodal_lora` | 数据集上传/版本/划分、LoRA 实验记录 API |
 | `packages/planner` | `Planner` 协议、确定性 Planner、`ModelPlanner`、计划校验、有界重规划 |
@@ -24,12 +25,19 @@ Skill Registry + Model Provider + HITL + Checkpoint + RAG + 多模态数据处�
 
 ```powershell
 python -m pip install -e ".[dev]"
-python -m pytest tests -q                 # 195 tests
+python -m pytest tests -q                 # 204 tests
 python -m ruff check .                    # lint
 python -m mypy                            # types
 python scripts/check_skeleton.py          # 结构 + 导入冒烟
 python scripts/eval_rag.py                # RAG 评测 -> reports/rag-eval.json
 ```
+
+```powershell
+python -m uvicorn apps.console.main:app --reload --port 8003   # 统一控制台（推荐）
+```
+
+控制台把两个应用挂载为子应用（`/runtime`、`/multimodal`），一个端口即可操作全部能力；
+也可以单独启动它们：
 
 ```powershell
 python -m uvicorn apps.runtime_harness.main:app --reload --port 8001

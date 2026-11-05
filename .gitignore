@@ -18,3 +18,8 @@ data/*.sqlite3-shm
 data/uploads/
 data/models/
 reports/
+
+# 本地 Agent / 编辑器配置，不入库
+.claude/
+.cursor/
+.playwright-mcp/

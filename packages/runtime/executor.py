@@ -58,6 +58,12 @@ class TaskExecutor:
     A timed-out handler cannot be interrupted in Python; the deadline only stops
     the runtime from *waiting* for it. That is recorded as ``timed_out`` so the
     caller can surface it instead of hiding it.
+
+    Because the abandoned handler keeps running, a timeout is never retried here:
+    re-submitting would run the same side effect twice. Note the abandoned call
+    still occupies one pool worker until it returns, so a permanently hung
+    handler shrinks the effective concurrency; isolate untrusted work in a
+    subprocess if that matters.
     """
 
     def __init__(
@@ -97,7 +103,6 @@ class TaskExecutor:
     def _collect(self, call: HandlerCall, future: Any) -> AttemptResult:
         started = self._clock()
         attempts = 0
-        timed_out = False
 
         while True:
             attempts += 1
@@ -111,12 +116,21 @@ class TaskExecutor:
                     latency_ms=int((self._clock() - started) * 1000),
                 )
             except FutureTimeout:
-                timed_out = True
-                error: BaseException = TaskTimeout(
-                    f"task {call.task_id} exceeded {call.timeout_seconds}s"
+                # 超时只停止「等待」，运行中的 handler 并不会被 Python 打断。
+                # 此时若重新 submit，同一个副作用会被并发执行两份（例如重复提交、
+                # 重复写库），因此超时一律不重试，交由上层决定是否用新的
+                # HandlerCall 带幂等键重放。
+                return AttemptResult(
+                    task_id=call.task_id,
+                    ok=False,
+                    error=f"task {call.task_id} exceeded {call.timeout_seconds}s",
+                    error_type="TaskTimeout",
+                    attempts=attempts,
+                    latency_ms=int((self._clock() - started) * 1000),
+                    timed_out=True,
                 )
             except Exception as exc:  # noqa: BLE001 - every failure is classified below
-                error = exc
+                error: BaseException = exc
 
             retryable = self._is_retryable(error)
             if attempts > call.max_retries or not retryable:
@@ -127,7 +141,7 @@ class TaskExecutor:
                     error_type=type(error).__name__,
                     attempts=attempts,
                     latency_ms=int((self._clock() - started) * 1000),
-                    timed_out=timed_out,
+                    timed_out=False,
                 )
 
             delay = min(

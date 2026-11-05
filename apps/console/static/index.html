@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Demo Suite 控制台</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2430; --line:#2a3240;
+    --fg:#d5dce6; --dim:#8b96a5; --accent:#58a6ff; --ok:#3fb950;
+    --warn:#d29922; --err:#f85149; --purple:#bc8cff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace}
+  header{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:12px 20px;
+         border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
+  h1{font-size:16px;margin:0;font-weight:600}
+  .pill{padding:1px 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-size:12px}
+  nav{display:flex;gap:6px;padding:10px 20px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+  nav button{width:auto;background:transparent;border:1px solid transparent;padding:6px 14px}
+  nav button.active{border-color:var(--accent);background:var(--panel2);color:#fff}
+  main{padding:16px 20px;max-width:1180px}
+  .panel{display:none}
+  .panel.active{display:block}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:22px 0 10px}
+  h2:first-child{margin-top:0}
+  input,textarea,select,button{font:inherit;color:var(--fg);background:var(--panel2);
+    border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%}
+  textarea{resize:vertical;min-height:60px}
+  button{cursor:pointer;transition:border-color .15s,background .15s}
+  button:hover:not(:disabled){border-color:var(--accent);background:#22303f}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{border-color:#2f6fa8;background:#1b2c3d}
+  .row{display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap}
+  .row>label{flex:1;min-width:130px}
+  .row>button{width:auto;flex:none}
+  label>span{display:block;font-size:11px;color:var(--dim);margin-bottom:3px}
+  pre{background:#080b10;border:1px solid var(--line);border-radius:6px;padding:10px;
+      overflow:auto;max-height:400px;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:8px 0 0}
+  pre.ok{border-color:#2c6355} pre.bad{border-color:#7a3030}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+  th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:500}
+  .muted{color:var(--dim)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+  .kv{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:9px 11px}
+  .kv .k{font-size:11px;color:var(--dim)} .kv .v{font-size:14px;word-break:break-all}
+  #toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:20}
+  .toast{padding:9px 13px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);font-size:13px;max-width:420px}
+  .toast.err{border-color:#7a3030;color:#ffb3b3} .toast.ok{border-color:#2c6355;color:#a9efd9}
+  code{background:#080b10;padding:1px 5px;border-radius:4px}
+  .run-link{cursor:pointer;color:var(--accent);text-decoration:underline}
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Demo Suite 控制台</h1>
+  <span class="pill" id="health">连接中…</span>
+</header>
+<nav>
+  <button class="active" data-panel="overview">概览</button>
+  <button data-panel="runs">运行</button>
+  <button data-panel="plan">计划 / 工具</button>
+  <button data-panel="data">数据集 / 实验</button>
+  <button data-panel="ops">MCP / 指标</button>
+</nav>
+
+<main>
+  <section class="panel active" id="panel-overview">
+    <h2>运行环境</h2>
+    <div class="grid" id="config-grid"><span class="muted">加载中…</span></div>
+    <h2>最近运行</h2>
+    <div id="recent-runs"><span class="muted">暂无数据</span></div>
+  </section>
+
+  <section class="panel" id="panel-runs">
+    <h2>创建运行</h2>
+    <div class="row">
+      <label><span>任务描述</span><input id="task" placeholder="诊断仓库里的登录失败问题" autocomplete="off"></label>
+      <button class="primary" id="create-run">创建</button>
+    </div>
+    <div class="row">
+      <label><span>当前运行 ID</span><input id="run-id" placeholder="创建后自动填入" autocomplete="off"></label>
+      <button id="load-run">加载</button>
+      <button id="exec-run">执行计划</button>
+      <button id="cancel-run">取消</button>
+      <button id="resume-run">恢复</button>
+    </div>
+    <div class="row">
+      <button id="trace-run" style="width:auto">Span 树</button>
+      <button id="summary-run" style="width:auto">摘要</button>
+      <button id="events-run" style="width:auto">事件</button>
+      <button id="metrics-all" style="width:auto">Prometheus</button>
+    </div>
+    <pre id="run-out" hidden></pre>
+
+    <h2>工具调用 / 审批</h2>
+    <div class="row">
+      <label><span>工具名</span><input id="tool-name" placeholder="read_context" autocomplete="off"></label>
+      <label><span>负载 JSON</span><input id="tool-payload" placeholder='{"query":"hello"}' autocomplete="off"></label>
+      <button id="call-tool">调用</button>
+    </div>
+    <div class="row">
+      <label><span>审批 ID</span><input id="approval-id" placeholder="approval-..." autocomplete="off"></label>
+      <button id="approve">批准</button>
+      <button id="reject">拒绝</button>
+    </div>
+    <pre id="tool-out" hidden></pre>
+  </section>
+
+  <section class="panel" id="panel-plan">
+    <h2>计划器</h2>
+    <div class="row">
+      <label><span>目标</span><input id="goal" placeholder="分析仓库并给出修复建议" autocomplete="off"></label>
+      <button id="plan-goal">生成计划</button>
+    </div>
+    <pre id="plan-out" hidden></pre>
+    <h2>技能表</h2>
+    <div id="skills"><span class="muted">点击下方按钮加载</span></div>
+    <div class="row"><button id="load-skills" style="width:auto">加载技能</button>
+                     <button id="load-tools" style="width:auto">加载工具</button></div>
+    <div id="tools"></div>
+  </section>
+
+  <section class="panel" id="panel-data">
+    <h2>新建数据集</h2>
+    <div class="row">
+      <label><span>名称</span><input id="ds-name" placeholder="demo-dataset" autocomplete="off"></label>
+      <label><span>来源类型（逗号分隔）</span><input id="ds-types" value="text,image" autocomplete="off"></label>
+      <button class="primary" id="create-ds">创建</button>
+    </div>
+    <div class="row">
+      <label><span>数据集 ID</span><input id="ds-id" placeholder="创建后自动填入" autocomplete="off"></label>
+      <button id="ds-load">查询</button>
+      <button id="ds-version">冻结版本</button>
+      <button id="ds-split">划分</button>
+    </div>
+    <h2>上传文件（base64）</h2>
+    <div class="row">
+      <label><span>文件名</span><input id="f-name" value="note.txt" autocomplete="off"></label>
+      <label><span>媒体类型</span><input id="f-type" value="text/plain" autocomplete="off"></label>
+    </div>
+    <div class="row">
+      <label><span>内容（纯文本，自动转 base64）</span><input id="f-content" value="hello multimodal" autocomplete="off"></label>
+      <button id="upload">上传</button>
+    </div>
+    <pre id="ds-out" hidden></pre>
+    <h2>LoRA 实验</h2>
+    <div class="row">
+      <label><span>实验名</span><input id="exp-name" value="lora-demo" autocomplete="off"></label>
+      <label><span>rank</span><input id="exp-rank" type="number" value="8"></label>
+      <label><span>alpha</span><input id="exp-alpha" type="number" value="16"></label>
+      <label><span>lr</span><input id="exp-lr" type="number" step="0.0001" value="0.0002"></label>
+      <label><span>epochs</span><input id="exp-epochs" type="number" value="1"></label>
+      <button id="create-exp">创建</button>
+    </div>
+    <div class="row">
+      <button id="list-exp" style="width:auto">列出实验</button>
+    </div>
+    <pre id="exp-out" hidden></pre>
+  </section>
+
+  <section class="panel" id="panel-ops">
+    <h2>MCP 工具</h2>
+    <div class="row"><button id="mcp-tools" style="width:auto">GET /runtime/mcp/tools</button></div>
+    <pre id="mcp-out" hidden></pre>
+    <h2>指标</h2>
+    <div class="row"><button id="mcp-metrics" style="width:auto">GET /runtime/metrics</button></div>
+    <pre id="metrics-out" hidden></pre>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+const RUNTIME = '/runtime';
+const MULTIMODAL = '/multimodal';
+
+function toast(message, kind) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : '');
+  el.textContent = message;
+  document.getElementById('toast').appendChild(el);
+  setTimeout(() => el.remove(), 4600);
+}
+
+function escapeHtml(v) {
+  return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function api(path, options) {
+  const response = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+    body: options && options.body !== undefined ? JSON.stringify(options.body) : undefined,
+  });
+  const text = await response.text();
+  let payload = null;
+  try { payload = text ? JSON.parse(text) : null; } catch { payload = { detail: text }; }
+  if (!response.ok) {
+    const detail = payload && payload.detail !== undefined
+      ? (typeof payload.detail === 'string' ? payload.detail : JSON.stringify(payload.detail))
+      : response.statusText;
+    throw new Error(detail);
+  }
+  return payload;
+}
+
+function show(id, data, cls) {
+  const el = document.getElementById(id);
+  el.hidden = false;
+  el.className = cls || '';
+  el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+}
+
+function showError(id, error) {
+  show(id, error.message || String(error), 'bad');
+  toast(error.message || String(error), 'err');
+}
+
+document.querySelectorAll('nav button').forEach(button => {
+  button.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === button));
+    document.querySelectorAll('.panel').forEach(panel => {
+      panel.classList.toggle('active', panel.id === 'panel-' + button.dataset.panel);
+    });
+  });
+});
+
+function currentRun() {
+  const runId = document.getElementById('run-id').value.trim();
+  if (!runId) throw new Error('请先创建或填写运行 ID');
+  return runId;
+}
+
+const view = id => document.getElementById(id).value.trim();
+
+document.getElementById('create-run').addEventListener('click', async () => {
+  const task = view('task');
+  if (!task) { toast('任务描述不能为空', 'err'); return; }
+  try {
+    const created = await api(`${RUNTIME}/runs`, { method: 'POST', body: { task } });
+    document.getElementById('run-id').value = created.run_id;
+    show('run-out', created, 'ok');
+    toast('运行已创建', 'ok');
+    loadRecentRuns();
+  } catch (error) { showError('run-out', error); }
+});
+
+document.getElementById('load-run').addEventListener('click', async () => {
+  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}`), 'ok'); }
+  catch (error) { showError('run-out', error); }
+});
+
+document.getElementById('exec-run').addEventListener('click', async () => {
+  try {
+    show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/execute`, { method: 'POST' }), 'ok');
+    loadRecentRuns();
+  } catch (error) { showError('run-out', error); }
+});
+
+document.getElementById('cancel-run').addEventListener('click', async () => {
+  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/cancel`, { method: 'POST' }), 'ok'); }
+  catch (error) { showError('run-out', error); }
+});
+
+document.getElementById('resume-run').addEventListener('click', async () => {
+  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/resume`, { method: 'POST' }), 'ok'); }
+  catch (error) { showError('run-out', error); }
+});
+
+document.getElementById('trace-run').addEventListener('click', async () => {
+  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/trace`), 'ok'); }
+  catch (error) { showError('run-out', error); }
+});
+
+document.getElementById('summary-run').addEventListener('click', async () => {
+  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/summary`), 'ok'); }
+  catch (error) { showError('run-out', error); }
+});
+
+document.getElementById('events-run').addEventListener('click', async () => {
+  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/events`), 'ok'); }
+  catch (error) { showError('run-out', error); }
+});
+
+document.getElementById('metrics-all').addEventListener('click', async () => {
+  try {
+    const response = await fetch(`${RUNTIME}/metrics`);
+    show('run-out', await response.text(), response.ok ? 'ok' : 'bad');
+  } catch (error) { showError('run-out', error); }
+});
+
+document.getElementById('call-tool').addEventListener('click', async () => {
+  const tool = view('tool-name');
+  if (!tool) { toast('工具名不能为空', 'err'); return; }
+  let payload = {};
+  const raw = view('tool-payload');
+  if (raw) {
+    try { payload = JSON.parse(raw); } catch { toast('负载不是合法 JSON', 'err'); return; }
+  }
+  try {
+    show('tool-out', await api(
+      `${RUNTIME}/runs/${encodeURIComponent(currentRun())}/tools/${encodeURIComponent(tool)}`,
+      { method: 'POST', body: { payload } }), 'ok');
+  } catch (error) { showError('tool-out', error); }
+});
+
+document.getElementById('approve').addEventListener('click', async () => {
+  try {
+    show('tool-out', await api(
+      `${RUNTIME}/runs/${encodeURIComponent(currentRun())}/approvals/${encodeURIComponent(view('approval-id'))}`,
+      { method: 'POST' }), 'ok');
+  } catch (error) { showError('tool-out', error); }
+});
+
+document.getElementById('reject').addEventListener('click', async () => {
+  try {
+    show('tool-out', await api(
+      `${RUNTIME}/runs/${encodeURIComponent(currentRun())}/approvals/${encodeURIComponent(view('approval-id'))}/reject`,
+      { method: 'POST' }), 'ok');
+  } catch (error) { showError('tool-out', error); }
+});
+
+document.getElementById('plan-goal').addEventListener('click', async () => {
+  const goal = view('goal');
+  if (!goal) { toast('目标不能为空', 'err'); return; }
+  try { show('plan-out', await api(`${RUNTIME}/planner?goal=${encodeURIComponent(goal)}`), 'ok'); }
+  catch (error) { showError('plan-out', error); }
+});
+
+document.getElementById('load-skills').addEventListener('click', async () => {
+  try {
+    const items = await api(`${RUNTIME}/skills`);
+    const box = document.getElementById('skills');
+    box.innerHTML = `<table><thead><tr><th>名称</th><th>描述</th><th>工具</th></tr></thead><tbody>${
+      items.map(skill => `<tr><td>${escapeHtml(skill.name)}</td><td>${escapeHtml(skill.description)}</td>
+        <td>${escapeHtml((skill.tool_names || []).join(', '))}</td></tr>`).join('')}</tbody></table>`;
+  } catch (error) { document.getElementById('skills').innerHTML = `<span class="muted">${escapeHtml(error.message)}</span>`; }
+});
+
+document.getElementById('load-tools').addEventListener('click', async () => {
+  try {
+    const items = await api(`${RUNTIME}/tools`);
+    const box = document.getElementById('tools');
+    box.innerHTML = `<table><thead><tr><th>名称</th><th>描述</th><th>来源</th></tr></thead><tbody>${
+      items.map(tool => `<tr><td>${escapeHtml(tool.name)}</td><td>${escapeHtml(tool.description)}</td>
+        <td>${escapeHtml(tool.source || '—')}</td></tr>`).join('')}</tbody></table>`;
+  } catch (error) { document.getElementById('tools').innerHTML = `<span class="muted">${escapeHtml(error.message)}</span>`; }
+});
+
+document.getElementById('create-ds').addEventListener('click', async () => {
+  const name = view('ds-name');
+  if (!name) { toast('数据集名称不能为空', 'err'); return; }
+  const types = view('ds-types').split(',').map(s => s.trim()).filter(Boolean);
+  try {
+    const created = await api(`${MULTIMODAL}/datasets`, { method: 'POST', body: { name, source_types: types } });
+    document.getElementById('ds-id').value = created.dataset_id;
+    show('ds-out', created, 'ok');
+    toast('数据集已创建', 'ok');
+  } catch (error) { showError('ds-out', error); }
+});
+
+function dsId() {
+  const id = view('ds-id');
+  if (!id) throw new Error('请先创建或填写数据集 ID');
+  return id;
+}
+
+document.getElementById('ds-load').addEventListener('click', async () => {
+  try { show('ds-out', await api(`${MULTIMODAL}/datasets/${encodeURIComponent(dsId())}`), 'ok'); }
+  catch (error) { showError('ds-out', error); }
+});
+
+document.getElementById('ds-version').addEventListener('click', async () => {
+  try { show('ds-out', await api(`${MULTIMODAL}/datasets/${encodeURIComponent(dsId())}/versions`, { method: 'POST' }), 'ok'); }
+  catch (error) { showError('ds-out', error); }
+});
+
+document.getElementById('ds-split').addEventListener('click', async () => {
+  try { show('ds-out', await api(`${MULTIMODAL}/datasets/${encodeURIComponent(dsId())}/split`, { method: 'POST' }), 'ok'); }
+  catch (error) { showError('ds-out', error); }
+});
+
+document.getElementById('upload').addEventListener('click', async () => {
+  const content = document.getElementById('f-content').value;
+  if (!content) { toast('内容不能为空', 'err'); return; }
+  const bytes = new TextEncoder().encode(content);
+  let binary = '';
+  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+  const body = {
+    filename: view('f-name') || 'upload.bin',
+    media_type: view('f-type') || 'application/octet-stream',
+    content_base64: btoa(binary),
+  };
+  try { show('ds-out', await api(`${MULTIMODAL}/datasets/${encodeURIComponent(dsId())}/files`, { method: 'POST', body }), 'ok'); }
+  catch (error) { showError('ds-out', error); }
+});
+
+document.getElementById('create-exp').addEventListener('click', async () => {
+  const body = {
+    name: view('exp-name') || 'lora-demo',
+    dataset_id: dsId(),
+    rank: Number(document.getElementById('exp-rank').value),
+    alpha: Number(document.getElementById('exp-alpha').value),
+    learning_rate: Number(document.getElementById('exp-lr').value),
+    epochs: Number(document.getElementById('exp-epochs').value),
+  };
+  try { show('exp-out', await api(`${MULTIMODAL}/experiments`, { method: 'POST', body }), 'ok'); }
+  catch (error) { showError('exp-out', error); }
+});
+
+document.getElementById('list-exp').addEventListener('click', async () => {
+  try { show('exp-out', await api(`${MULTIMODAL}/experiments`), 'ok'); }
+  catch (error) { showError('exp-out', error); }
+});
+
+document.getElementById('mcp-tools').addEventListener('click', async () => {
+  try { show('mcp-out', await api(`${RUNTIME}/mcp/tools`), 'ok'); }
+  catch (error) { showError('mcp-out', error); }
+});
+
+document.getElementById('mcp-metrics').addEventListener('click', async () => {
+  try {
+    const response = await fetch(`${RUNTIME}/metrics`);
+    const body = await response.text();
+    document.getElementById('metrics-out').hidden = false;
+    document.getElementById('metrics-out').className = response.ok ? 'ok' : 'bad';
+    document.getElementById('metrics-out').textContent = body;
+  } catch (error) { showError('metrics-out', error); }
+});
+
+async function loadConfig() {
+  try {
+    const config = await api('/console/api/config');
+    const rows = [
+      ['事件存储', config.event_store_backend],
+      ['模型 Provider', config.model_provider],
+      ['模型名', config.model_name || '（未配置）'],
+      ['模型可用', config.model_configured ? '是' : '否'],
+      ['MCP 远端', config.mcp_remote_configured ? '已配置' : '未配置'],
+      ['MCP 协议', config.mcp_protocol],
+      ['MCP 服务端鉴权', config.mcp_server_auth ? '开启' : '关闭'],
+      ['执行并发', String(config.executor_concurrency)],
+      ['最大重规划', String(config.max_replans)],
+      ['审批 TTL', config.approval_ttl_seconds + 's'],
+      ['上传上限', config.max_upload_bytes + 'B'],
+    ];
+    document.getElementById('config-grid').innerHTML = rows.map(([k, v]) =>
+      `<div class="kv"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v)}</div></div>`).join('');
+    document.getElementById('health').textContent = '运行时 :8001 · 多模态 :8002 · 控制台 :8003';
+  } catch (error) {
+    document.getElementById('health').textContent = '后端不可用';
+    document.getElementById('config-grid').innerHTML = `<span class="muted">${escapeHtml(error.message)}</span>`;
+  }
+}
+
+async function loadRecentRuns() {
+  try {
+    const runId = document.getElementById('run-id').value.trim();
+    if (!runId) { document.getElementById('recent-runs').innerHTML = '<span class="muted">暂无数据</span>'; return; }
+    const run = await api(`${RUNTIME}/runs/${encodeURIComponent(runId)}`);
+    document.getElementById('recent-runs').innerHTML =
+      `<div class="kv"><div class="k">运行 ${escapeHtml(runId)}</div>
+       <div class="v">${escapeHtml(run.status || 'unknown')}</div></div>`;
+  } catch (error) {
+    document.getElementById('recent-runs').innerHTML = `<span class="muted">${escapeHtml(error.message)}</span>`;
+  }
+}
+
+loadConfig();
+</script>
+</body>
+</html>
