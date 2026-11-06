@@ -3,472 +3,532 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent Demo Suite 控制台</title>
+<title>Agent Demo Suite · 运行时实验台</title>
 <style>
-  :root {
-    --bg:#0d1117; --panel:#161b22; --panel2:#1c2430; --line:#2a3240;
-    --fg:#d5dce6; --dim:#8b96a5; --accent:#58a6ff; --ok:#3fb950;
-    --warn:#d29922; --err:#f85149; --purple:#bc8cff;
+  /* Suite 的视觉语气：浅色实验台。纸张底色、真实卡片、左导航右工作区，
+     和 RepoOps 的深色终端刻意做成两套东西。 */
+  :root{
+    --paper:#fbfaf7; --card:#ffffff; --sunk:#f2f0ea; --ink:#1b1a17;
+    --ink-2:#5c5850; --ink-3:#8a857b; --rule:#e2ded4;
+    --brand:#2f5d50; --brand-soft:#e8f0ec;
+    --amber:#b4761f; --amber-soft:#fbf1de;
+    --red:#a8342a; --red-soft:#fbeae8;
+    --blue:#2b5f8a; --blue-soft:#e8f0f7;
+    --serif:Georgia,"Songti SC","Source Han Serif SC",serif;
+    --sans:"Segoe UI",system-ui,-apple-system,"Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+    --shadow:0 1px 2px rgba(27,26,23,.06),0 4px 14px rgba(27,26,23,.05);
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);
-       font:14px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace}
-  header{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:12px 20px;
-         border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
-  h1{font-size:16px;margin:0;font-weight:600}
-  .pill{padding:1px 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-size:12px}
-  nav{display:flex;gap:6px;padding:10px 20px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
-  nav button{width:auto;background:transparent;border:1px solid transparent;padding:6px 14px}
-  nav button.active{border-color:var(--accent);background:var(--panel2);color:#fff}
-  main{padding:16px 20px;max-width:1180px}
-  .panel{display:none}
-  .panel.active{display:block}
-  h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:22px 0 10px}
-  h2:first-child{margin-top:0}
-  input,textarea,select,button{font:inherit;color:var(--fg);background:var(--panel2);
-    border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%}
-  textarea{resize:vertical;min-height:60px}
-  button{cursor:pointer;transition:border-color .15s,background .15s}
-  button:hover:not(:disabled){border-color:var(--accent);background:#22303f}
-  button:disabled{opacity:.45;cursor:not-allowed}
-  button.primary{border-color:#2f6fa8;background:#1b2c3d}
-  .row{display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap}
-  .row>label{flex:1;min-width:130px}
-  .row>button{width:auto;flex:none}
-  label>span{display:block;font-size:11px;color:var(--dim);margin-bottom:3px}
-  pre{background:#080b10;border:1px solid var(--line);border-radius:6px;padding:10px;
-      overflow:auto;max-height:400px;font-size:12px;white-space:pre-wrap;word-break:break-word;margin:8px 0 0}
-  pre.ok{border-color:#2c6355} pre.bad{border-color:#7a3030}
-  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
-  th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{color:var(--dim);font-weight:500}
-  .muted{color:var(--dim)}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
-  .kv{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:9px 11px}
-  .kv .k{font-size:11px;color:var(--dim)} .kv .v{font-size:14px;word-break:break-all}
-  #toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:20}
-  .toast{padding:9px 13px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);font-size:13px;max-width:420px}
-  .toast.err{border-color:#7a3030;color:#ffb3b3} .toast.ok{border-color:#2c6355;color:#a9efd9}
-  code{background:#080b10;padding:1px 5px;border-radius:4px}
-  .run-link{cursor:pointer;color:var(--accent);text-decoration:underline}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.65 var(--sans)}
+
+  /* 顶部：这是一页“说明书 + 操作台”，所以先把目的说清楚 */
+  .masthead{border-bottom:1px solid var(--rule);background:var(--card);padding:22px 34px 18px}
+  .mast-row{display:flex;align-items:flex-start;gap:26px;flex-wrap:wrap}
+  .mast-title h1{margin:0;font:600 24px/1.25 var(--serif);letter-spacing:.2px}
+  .mast-title .kicker{font-size:11.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+  .mast-title .dek{color:var(--ink-2);font-size:13.5px;margin:6px 0 0;max-width:52ch}
+  .statusbox{margin-left:auto;display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px;color:var(--ink-2);min-width:300px}
+  .statusbox dt{color:var(--ink-3)}
+  .statusbox dd{margin:0;font-family:var(--mono);font-size:12px;color:var(--ink)}
+  .lamp{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--brand);vertical-align:baseline;margin-right:6px}
+  .lamp.off{background:#c9c4b8}
+
+  /* 三个“这项目回答什么问题”的条目 */
+  .promise{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1px;background:var(--rule);border-top:1px solid var(--rule);margin-top:18px}
+  .promise div{background:var(--card);padding:12px 4px 4px}
+  .promise b{display:block;font-size:12.5px;color:var(--brand)}
+  .promise span{font-size:12.5px;color:var(--ink-2)}
+
+  /* 主体：左导航 + 右工作区 */
+  .shell{display:grid;grid-template-columns:212px 1fr;min-height:calc(100vh - 210px)}
+  nav{border-right:1px solid var(--rule);background:var(--sunk);padding:18px 0}
+  nav .group{font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--ink-3);padding:14px 20px 6px}
+  nav button{display:block;width:100%;text-align:left;background:none;border:none;border-left:3px solid transparent;
+    padding:8px 20px;font:13.5px var(--sans);color:var(--ink-2);cursor:pointer}
+  nav button:hover{background:rgba(47,93,80,.06);color:var(--ink)}
+  nav button.on{background:var(--card);border-left-color:var(--brand);color:var(--brand);font-weight:600}
+
+  main{padding:22px 34px 60px;max-width:1080px}
+  .view{display:none}
+  .view.on{display:block}
+  .view > h2{font:600 18px/1.3 var(--serif);margin:0 0 4px}
+  .view > .sub{color:var(--ink-2);font-size:13px;margin:0 0 18px;max-width:70ch}
+
+  .card{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:16px 18px;box-shadow:var(--shadow);margin-bottom:16px}
+  .card h3{margin:0 0 10px;font:600 13.5px var(--sans);color:var(--ink)}
+  .card h3 .tag{font-weight:400;color:var(--ink-3);font-size:12px;margin-left:8px}
+
+  label{display:block;font-size:12px;color:var(--ink-2);margin:10px 0 4px}
+  input,textarea,select{width:100%;font:13px var(--sans);color:var(--ink);background:var(--card);
+    border:1px solid var(--rule);border-radius:6px;padding:8px 10px}
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--brand-soft);border-color:var(--brand)}
+  textarea{resize:vertical;min-height:64px;font-family:var(--mono);font-size:12.5px}
+  button.act{background:var(--brand);color:#fff;border:none;border-radius:6px;padding:8px 16px;font:13px var(--sans);cursor:pointer;margin-top:12px}
+  button.act:hover{background:#25493f}
+  button.act:disabled{opacity:.45;cursor:not-allowed}
+  button.act.ghost{background:var(--card);color:var(--brand);border:1px solid var(--rule)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .row > div{flex:1 1 160px}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-weight:600;color:var(--ink-3);font-size:11.5px;border-bottom:1px solid var(--rule);padding:6px 8px}
+  td{padding:7px 8px;border-bottom:1px solid #f0ece3;vertical-align:top}
+  td.mono,th.mono,.mono{font-family:var(--mono);font-size:12px}
+  tr:last-child td{border-bottom:none}
+
+  .badge{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;background:var(--sunk);color:var(--ink-2);white-space:nowrap}
+  .badge.ok{background:var(--brand-soft);color:var(--brand)}
+  .badge.run{background:var(--blue-soft);color:var(--blue)}
+  .badge.warn{background:var(--amber-soft);color:var(--amber)}
+  .badge.bad{background:var(--red-soft);color:var(--red)}
+
+  pre{margin:0;background:var(--sunk);border:1px solid var(--rule);border-radius:6px;padding:12px;
+    font:12px/1.6 var(--mono);overflow:auto;max-height:340px;white-space:pre-wrap;word-break:break-word}
+  .empty{color:var(--ink-3);font-size:13px;padding:14px 2px;font-style:italic}
+  .err{color:var(--red);font-size:13px}
+  .hint{font-size:12px;color:var(--ink-3);margin:8px 0 0}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  .steps li{counter-increment:s;position:relative;padding:0 0 12px 34px;font-size:13px;color:var(--ink-2)}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:0;width:22px;height:22px;border-radius:50%;
+    background:var(--brand-soft);color:var(--brand);font:600 12px var(--sans);display:grid;place-items:center}
+  .steps li b{color:var(--ink)}
+  code{font-family:var(--mono);background:var(--sunk);padding:1px 5px;border-radius:4px;font-size:12px}
+  @media (max-width:860px){ .shell{grid-template-columns:1fr} nav{border-right:none;border-bottom:1px solid var(--rule)} main{padding:18px} }
 </style>
 </head>
 <body>
-<header>
-  <h1>Agent Demo Suite 控制台</h1>
-  <span class="pill" id="health">连接中…</span>
+
+<header class="masthead">
+  <div class="mast-row">
+    <div class="mast-title">
+      <div class="kicker">Agent Demo Suite</div>
+      <h1>Agent 运行时实验台</h1>
+      <p class="dek">一个能被观察、被审批、被回放的 Agent 跑起来是什么样。这里不演示“AI 很聪明”，
+        而是把 <b>run_id、事件、工具权限、检查点</b> 摆出来给你检查——每一格数据都能点开看它从哪来。</p>
+    </div>
+    <dl class="statusbox">
+      <dt>Runtime</dt><dd><span id="lamp-runtime" class="lamp off"></span><span id="runtime-state">连接中…</span></dd>
+      <dt>Multimodal</dt><dd><span id="lamp-mm" class="lamp off"></span><span id="mm-state">连接中…</span></dd>
+      <dt>事件库</dt><dd id="cfg-store">—</dd>
+      <dt>模型</dt><dd id="cfg-model">—</dd>
+      <dt>执行并发</dt><dd id="cfg-conc">—</dd>
+    </dl>
+  </div>
+  <div class="promise">
+    <div><b>它干了什么？</b><span>每次运行是一个一等公民 run_id，带完整事件流水与 trace 树。</span></div>
+    <div><b>谁批准的？</b><span>工具带 permission，标记需要确认的必须拿到 approval 才能跑。</span></div>
+    <div><b>挂了能续吗？</b><span>检查点 + resume + 事件导出，进程重启也不丢证据。</span></div>
+    <div><b>数据从哪来？</b><span>数据集有版本和切分，实验参数可对比，不编造指标。</span></div>
+  </div>
 </header>
-<nav>
-  <button class="active" data-panel="overview">概览</button>
-  <button data-panel="runs">运行</button>
-  <button data-panel="plan">计划 / 工具</button>
-  <button data-panel="data">数据集 / 实验</button>
-  <button data-panel="ops">MCP / 指标</button>
-</nav>
 
-<main>
-  <section class="panel active" id="panel-overview">
-    <h2>运行环境</h2>
-    <div class="grid" id="config-grid"><span class="muted">加载中…</span></div>
-    <h2>最近运行</h2>
-    <div id="recent-runs"><span class="muted">暂无数据</span></div>
-  </section>
+<div class="shell">
+  <nav>
+    <div class="group">开始</div>
+    <button data-view="start" class="on">从这里开始</button>
+    <div class="group">运行时</div>
+    <button data-view="run">发起一次运行</button>
+    <button data-view="inspect">检查运行</button>
+    <button data-view="tools">工具与技能</button>
+    <div class="group">多模态</div>
+    <button data-view="data">数据集</button>
+    <button data-view="exp">实验对比</button>
+    <div class="group">运维</div>
+    <button data-view="ops">配置与指标</button>
+  </nav>
 
-  <section class="panel" id="panel-runs">
-    <h2>创建运行</h2>
-    <div class="row">
-      <label><span>任务描述</span><input id="task" placeholder="诊断仓库里的登录失败问题" autocomplete="off"></label>
-      <button class="primary" id="create-run">创建</button>
-    </div>
-    <div class="row">
-      <label><span>当前运行 ID</span><input id="run-id" placeholder="创建后自动填入" autocomplete="off"></label>
-      <button id="load-run">加载</button>
-      <button id="exec-run">执行计划</button>
-      <button id="cancel-run">取消</button>
-      <button id="resume-run">恢复</button>
-    </div>
-    <div class="row">
-      <button id="trace-run" style="width:auto">Span 树</button>
-      <button id="summary-run" style="width:auto">摘要</button>
-      <button id="events-run" style="width:auto">事件</button>
-      <button id="metrics-all" style="width:auto">Prometheus</button>
-    </div>
-    <pre id="run-out" hidden></pre>
+  <main>
+    <!-- ① 从这里开始 -->
+    <section class="view on" id="v-start">
+      <h2>从这里开始</h2>
+      <p class="sub">这个项目想解决的问题是：<b>Agent 跑完之后，你说不清它到底做了什么、凭什么做、出了问题怎么复现</b>。
+        下面三步走完，你就能亲手看到这三件事分别被记在哪。</p>
+      <div class="card">
+        <h3>三步看懂这个项目</h3>
+        <ol class="steps">
+          <li><b>发起一次运行</b>——在「发起一次运行」里写一句话任务，点执行。你会拿到一个 run_id，这就是这次运行唯一的身份。</li>
+          <li><b>检查这次运行</b>——在「检查运行」里按 run_id 查：计划（planner 拆成了哪些任务）、事件流（每一步发生了什么）、
+            trace（父子 span 与耗时）、summary（成功率和 token）。四项对不上，说明埋点漏了。</li>
+          <li><b>看边界</b>——在「工具与技能」里看每个工具的 permission。读工具直接跑；需要确认的会挂起等 approval，
+            这就是“Agent 不能自作主张”的落点。</li>
+        </ol>
+        <p class="hint">当前 planner 版本是 <code>deterministic/1</code>：它把任务拆成一个 <code>execute</code> 节点，不调用大模型。
+          这是刻意留的最小可验证骨架——先把可观测和可审批做扎实，再替换 planner。</p>
+      </div>
+    </section>
 
-    <h2>工具调用 / 审批</h2>
-    <div class="row">
-      <label><span>工具名</span><input id="tool-name" placeholder="read_context" autocomplete="off"></label>
-      <label><span>负载 JSON</span><input id="tool-payload" placeholder='{"query":"hello"}' autocomplete="off"></label>
-      <button id="call-tool">调用</button>
-    </div>
-    <div class="row">
-      <label><span>审批 ID</span><input id="approval-id" placeholder="approval-..." autocomplete="off"></label>
-      <button id="approve">批准</button>
-      <button id="reject">拒绝</button>
-    </div>
-    <pre id="tool-out" hidden></pre>
-  </section>
+    <!-- ② 发起运行 -->
+    <section class="view" id="v-run">
+      <h2>发起一次运行</h2>
+      <p class="sub">写一句话描述你的任务。系统会立刻生成 plan，并返回 run_id。执行是可选的第二步——先看 plan 再决定跑不跑。</p>
+      <div class="card">
+        <label>任务描述</label>
+        <textarea id="task-input" placeholder="例如：读一下 src 目录，说明这个仓库是干什么的">诊断一下这个仓库的主要问题</textarea>
+        <label>元数据（可选，JSON，会原样挂在这次运行上）</label>
+        <input id="task-meta" placeholder='{"operator":"me"}'>
+        <button class="act" id="btn-create">创建运行</button>
+        <button class="act ghost" id="btn-create-run">创建并立即执行</button>
+      </div>
+      <div class="card" id="run-result-card" style="display:none">
+        <h3>运行已创建<span class="tag">点“检查运行”继续</span></h3>
+        <table><tbody id="run-result"></tbody></table>
+      </div>
+    </section>
 
-  <section class="panel" id="panel-plan">
-    <h2>计划器</h2>
-    <div class="row">
-      <label><span>目标</span><input id="goal" placeholder="分析仓库并给出修复建议" autocomplete="off"></label>
-      <button id="plan-goal">生成计划</button>
-    </div>
-    <pre id="plan-out" hidden></pre>
-    <h2>技能表</h2>
-    <div id="skills"><span class="muted">点击下方按钮加载</span></div>
-    <div class="row"><button id="load-skills" style="width:auto">加载技能</button>
-                     <button id="load-tools" style="width:auto">加载工具</button></div>
-    <div id="tools"></div>
-  </section>
+    <!-- ③ 检查运行 -->
+    <section class="view" id="v-inspect">
+      <h2>检查运行</h2>
+      <p class="sub">按 run_id 查一次运行的全部证据。<b>plan</b> 回答“打算怎么做”，<b>events</b> 回答“实际做了什么”，
+        <b>trace</b> 回答“花了多久”，<b>summary</b> 回答“结果算好还是坏”。</p>
+      <div class="card">
+        <div class="row">
+          <div style="flex:3 1 320px"><label>run_id</label><input id="inspect-id" placeholder="粘贴一个 run_id"></div>
+          <div style="flex:0 1 auto"><button class="act" id="btn-inspect">查询</button></div>
+        </div>
+        <p class="hint">最近运行的 run_id 会显示在「发起一次运行」的结果里；也可以从 <code>/runtime/runs/&#123;id&#125;/...</code> 直接取。</p>
+      </div>
+      <div id="inspect-body"></div>
+    </section>
 
-  <section class="panel" id="panel-data">
-    <h2>新建数据集</h2>
-    <div class="row">
-      <label><span>名称</span><input id="ds-name" placeholder="demo-dataset" autocomplete="off"></label>
-      <label><span>来源类型（逗号分隔）</span><input id="ds-types" value="text,image" autocomplete="off"></label>
-      <button class="primary" id="create-ds">创建</button>
-    </div>
-    <div class="row">
-      <label><span>数据集 ID</span><input id="ds-id" placeholder="创建后自动填入" autocomplete="off"></label>
-      <button id="ds-load">查询</button>
-      <button id="ds-version">冻结版本</button>
-      <button id="ds-split">划分</button>
-    </div>
-    <h2>上传文件（base64）</h2>
-    <div class="row">
-      <label><span>文件名</span><input id="f-name" value="note.txt" autocomplete="off"></label>
-      <label><span>媒体类型</span><input id="f-type" value="text/plain" autocomplete="off"></label>
-    </div>
-    <div class="row">
-      <label><span>内容（纯文本，自动转 base64）</span><input id="f-content" value="hello multimodal" autocomplete="off"></label>
-      <button id="upload">上传</button>
-    </div>
-    <pre id="ds-out" hidden></pre>
-    <h2>LoRA 实验</h2>
-    <div class="row">
-      <label><span>实验名</span><input id="exp-name" value="lora-demo" autocomplete="off"></label>
-      <label><span>rank</span><input id="exp-rank" type="number" value="8"></label>
-      <label><span>alpha</span><input id="exp-alpha" type="number" value="16"></label>
-      <label><span>lr</span><input id="exp-lr" type="number" step="0.0001" value="0.0002"></label>
-      <label><span>epochs</span><input id="exp-epochs" type="number" value="1"></label>
-      <button id="create-exp">创建</button>
-    </div>
-    <div class="row">
-      <button id="list-exp" style="width:auto">列出实验</button>
-    </div>
-    <pre id="exp-out" hidden></pre>
-  </section>
+    <!-- ④ 工具与技能 -->
+    <section class="view" id="v-tools">
+      <h2>工具与技能</h2>
+      <p class="sub">工具是 Agent 唯一能“动手”的地方，所以每个工具都带 <code>permission</code> 和 <code>requires_human_confirmation</code>。
+        这里列的是注册表里的真实内容，不是文档抄来的。</p>
+      <div class="card"><h3>已注册工具</h3><div id="tools-body"><div class="empty">加载中…</div></div></div>
+      <div class="card"><h3>已注册技能</h3><div id="skills-body"><div class="empty">加载中…</div></div></div>
+      <div class="card">
+        <h3>在运行里调一个工具<span class="tag">需要 run_id</span></h3>
+        <div class="row">
+          <div><label>run_id</label><input id="tool-run-id" placeholder="run_id"></div>
+          <div><label>工具名</label><input id="tool-name" placeholder="read_context"></div>
+        </div>
+        <label>入参（JSON）</label>
+        <textarea id="tool-payload">{"query": "这个仓库是干什么的"}</textarea>
+        <button class="act" id="btn-tool">调用</button>
+        <div id="tool-out" style="margin-top:12px"></div>
+      </div>
+    </section>
 
-  <section class="panel" id="panel-ops">
-    <h2>MCP 工具</h2>
-    <div class="row"><button id="mcp-tools" style="width:auto">GET /runtime/mcp/tools</button></div>
-    <pre id="mcp-out" hidden></pre>
-    <h2>指标</h2>
-    <div class="row"><button id="mcp-metrics" style="width:auto">GET /runtime/metrics</button></div>
-    <pre id="metrics-out" hidden></pre>
-  </section>
-</main>
-<div id="toast"></div>
+    <!-- ⑤ 数据集 -->
+    <section class="view" id="v-data">
+      <h2>数据集</h2>
+      <p class="sub">多模态部分不做假数据：数据集先建、再传文件、再出版本、再切分。每一步都留下 id，实验才有可比对象。</p>
+      <div class="card">
+        <h3>新建数据集</h3>
+        <div class="row">
+          <div><label>名称</label><input id="ds-name" placeholder="例如 demo-images"></div>
+          <div><label>来源类型（逗号分隔）</label><input id="ds-types" value="image"></div>
+        </div>
+        <button class="act" id="btn-ds">创建</button>
+      </div>
+      <div class="card">
+        <h3>数据集详情</h3>
+        <div class="row">
+          <div style="flex:3 1 300px"><label>dataset_id</label><input id="ds-id" placeholder="创建后自动填入"></div>
+          <div style="flex:0 1 auto"><button class="act ghost" id="btn-ds-get">查询</button></div>
+        </div>
+        <div id="ds-body" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <!-- ⑥ 实验 -->
+    <section class="view" id="v-exp">
+      <h2>实验对比</h2>
+      <p class="sub">同一数据集上换 rank / alpha / 学习率 / 量化位数，然后两两对比。指标来自真实 runner；没有 runner 时运行状态会是
+        <code>Unavailable</code>，而不是编一个好看的数字。</p>
+      <div class="card">
+        <h3>新建实验</h3>
+        <div class="row">
+          <div><label>名称</label><input id="exp-name" value="baseline-r8"></div>
+          <div><label>dataset_id</label><input id="exp-ds" placeholder="dataset_id"></div>
+        </div>
+        <div class="row">
+          <div><label>rank</label><input id="exp-rank" type="number" value="8"></div>
+          <div><label>alpha</label><input id="exp-alpha" type="number" step="0.1" value="16"></div>
+          <div><label>learning_rate</label><input id="exp-lr" type="number" step="0.0001" value="0.0002"></div>
+          <div><label>epochs</label><input id="exp-epochs" type="number" value="1"></div>
+          <div><label>quant_bits</label><select id="exp-quant"><option value="">不量化</option><option>4</option><option>8</option></select></div>
+        </div>
+        <button class="act" id="btn-exp">创建实验</button>
+      </div>
+      <div class="card"><h3>全部实验</h3><div id="exp-list"><div class="empty">加载中…</div></div></div>
+    </section>
+
+    <!-- ⑦ 运维 -->
+    <section class="view" id="v-ops">
+      <h2>配置与指标</h2>
+      <p class="sub">只暴露非敏感的布尔值和数字——控制台是本地工具，但它也绝不能把 token 回显给浏览器。</p>
+      <div class="card"><h3>当前配置</h3><table><tbody id="ops-config"></tbody></table></div>
+      <div class="card">
+        <h3>Prometheus 指标</h3>
+        <button class="act ghost" id="btn-metrics">拉取 /runtime/metrics</button>
+        <div id="ops-metrics" style="margin-top:12px"></div>
+      </div>
+    </section>
+  </main>
+</div>
 
 <script>
-const RUNTIME = '/runtime';
-const MULTIMODAL = '/multimodal';
+"use strict";
+const $ = (id) => document.getElementById(id);
 
-function toast(message, kind) {
-  const el = document.createElement('div');
-  el.className = 'toast' + (kind ? ' ' + kind : '');
-  el.textContent = message;
-  document.getElementById('toast').appendChild(el);
-  setTimeout(() => el.remove(), 4600);
-}
-
-function escapeHtml(v) {
-  return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 async function api(path, options) {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-    body: options && options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  const response = await fetch(path, Object.assign({ headers: { "Content-Type": "application/json" } }, options));
   const text = await response.text();
-  let payload = null;
-  try { payload = text ? JSON.parse(text) : null; } catch { payload = { detail: text }; }
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
   if (!response.ok) {
-    const detail = payload && payload.detail !== undefined
-      ? (typeof payload.detail === 'string' ? payload.detail : JSON.stringify(payload.detail))
-      : response.statusText;
-    throw new Error(detail);
+    const detail = body && typeof body === "object" && body.detail ? body.detail : (body || response.statusText);
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
-  return payload;
+  return body;
 }
 
-function show(id, data, cls) {
-  const el = document.getElementById(id);
-  el.hidden = false;
-  el.className = cls || '';
-  el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+function badge(status) {
+  const map = { completed: "ok", created: "run", running: "run", queued: "warn", failed: "bad", cancelled: "bad" };
+  return `<span class="badge ${map[status] || ""}">${esc(status)}</span>`;
 }
 
-function showError(id, error) {
-  show(id, error.message || String(error), 'bad');
-  toast(error.message || String(error), 'err');
-}
-
-document.querySelectorAll('nav button').forEach(button => {
-  button.addEventListener('click', () => {
-    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === button));
-    document.querySelectorAll('.panel').forEach(panel => {
-      panel.classList.toggle('active', panel.id === 'panel-' + button.dataset.panel);
-    });
+/* ── 导航 ── */
+document.querySelectorAll("nav button").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b === button));
+    document.querySelectorAll(".view").forEach((v) => v.classList.toggle("on", v.id === "v-" + button.dataset.view));
   });
 });
 
-function currentRun() {
-  const runId = document.getElementById('run-id').value.trim();
-  if (!runId) throw new Error('请先创建或填写运行 ID');
-  return runId;
+/* ── 顶部状态 ── */
+async function loadStatus() {
+  try {
+    const r = await api("/runtime/health");
+    $("lamp-runtime").className = "lamp";
+    $("runtime-state").textContent = r.status;
+  } catch (_) { $("runtime-state").textContent = "未连接"; }
+  try {
+    const m = await api("/multimodal/health");
+    $("lamp-mm").className = "lamp";
+    $("mm-state").textContent = m.status;
+  } catch (_) { $("mm-state").textContent = "未连接"; }
+  try {
+    const c = await api("/console/api/config");
+    $("cfg-store").textContent = c.event_store_backend;
+    $("cfg-model").textContent = c.model_configured ? c.model_name : "未配置（走 deterministic 路径）";
+    $("cfg-conc").textContent = c.executor_concurrency;
+    renderOpsConfig(c);
+  } catch (_) { $("cfg-store").textContent = "—"; }
 }
 
-const view = id => document.getElementById(id).value.trim();
-
-document.getElementById('create-run').addEventListener('click', async () => {
-  const task = view('task');
-  if (!task) { toast('任务描述不能为空', 'err'); return; }
+/* ── 发起运行 ── */
+async function createRun(alsoExecute) {
+  const task = $("task-input").value.trim();
+  if (!task) { alert("先写一句任务描述"); return; }
+  let metadata = {};
+  const rawMeta = $("task-meta").value.trim();
+  if (rawMeta) {
+    try { metadata = JSON.parse(rawMeta); } catch (_) { alert("元数据不是合法 JSON"); return; }
+  }
+  $("btn-create").disabled = true; $("btn-create-run").disabled = true;
   try {
-    const created = await api(`${RUNTIME}/runs`, { method: 'POST', body: { task } });
-    document.getElementById('run-id').value = created.run_id;
-    show('run-out', created, 'ok');
-    toast('运行已创建', 'ok');
-    loadRecentRuns();
-  } catch (error) { showError('run-out', error); }
-});
+    const run = await api("/runtime/runs", { method: "POST", body: JSON.stringify({ task, metadata }) });
+    let extra = "";
+    if (alsoExecute) {
+      const result = await api(`/runtime/runs/${run.run_id}/execute`, { method: "POST" });
+      extra = `<tr><th>执行结果</th><td>${badge(result.status)} ${esc((result.tasks || []).map((t) => t.name + ":" + t.status).join(", "))}</td></tr>`;
+    }
+    $("run-result-card").style.display = "";
+    $("run-result").innerHTML = `
+      <tr><th>run_id</th><td class="mono">${esc(run.run_id)}</td></tr>
+      <tr><th>session_id</th><td class="mono">${esc(run.session_id)}</td></tr>
+      <tr><th>状态</th><td>${badge(run.status)}</td></tr>${extra}`;
+    $("inspect-id").value = run.run_id;
+    $("tool-run-id").value = run.run_id;
+  } catch (error) {
+    $("run-result-card").style.display = "";
+    $("run-result").innerHTML = `<tr><th>失败</th><td class="err">${esc(error.message)}</td></tr>`;
+  } finally {
+    $("btn-create").disabled = false; $("btn-create-run").disabled = false;
+  }
+}
 
-document.getElementById('load-run').addEventListener('click', async () => {
-  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}`), 'ok'); }
-  catch (error) { showError('run-out', error); }
-});
+/* ── 检查运行 ── */
+async function inspectRun() {
+  const runId = $("inspect-id").value.trim();
+  if (!runId) { $("inspect-body").innerHTML = '<div class="card err">先填 run_id</div>'; return; }
+  $("inspect-body").innerHTML = '<div class="card empty">查询中…</div>';
+  const base = `/runtime/runs/${encodeURIComponent(runId)}`;
+  const [plan, events, trace, summary] = await Promise.allSettled([
+    api(`${base}/plan`), api(`${base}/events`), api(`${base}/trace`), api(`${base}/summary`),
+  ]);
+  const section = (title, note, settled, render) => {
+    const body = settled.status === "fulfilled"
+      ? render(settled.value)
+      : `<div class="err">${esc(settled.reason.message)}</div>`;
+    return `<div class="card"><h3>${title}<span class="tag">${note}</span></h3>${body}</div>`;
+  };
+  $("inspect-body").innerHTML = [
+    section("计划 plan", "打算怎么做", plan, (p) => `
+      <table><thead><tr><th>任务</th><th>描述</th><th>依赖</th><th class="mono">timeout</th></tr></thead><tbody>
+      ${(p.tasks || []).map((t) => `<tr><td><b>${esc(t.name)}</b><br><span class="mono" style="color:#8a857b;font-size:11px">${esc(t.task_id)}</span></td>
+        <td>${esc(t.description)}</td><td class="mono">${esc((t.depends_on || []).join(", ") || "—")}</td>
+        <td class="mono">${esc(t.timeout_seconds ?? "—")}</td></tr>`).join("")}
+      </tbody></table>
+      <p class="hint">planner 版本：<code>${esc(p.planner_version)}</code>　重规划次数：${p.replan_count}</p>`),
+    section("事件流 events", "实际做了什么", events, (e) => `
+      <table><thead><tr><th class="mono">时间</th><th>事件</th><th>状态</th><th>载荷</th></tr></thead><tbody>
+      ${(e.events || []).map((ev) => `<tr><td class="mono">${esc((ev.created_at || "").slice(11, 23))}</td>
+        <td><b>${esc(ev.event_type)}</b></td><td>${badge(ev.status)}</td>
+        <td class="mono" style="font-size:11px;color:#5c5850">${esc(JSON.stringify(ev.payload || {}).slice(0, 150))}</td></tr>`).join("")}
+      </tbody></table>`),
+    section("调用树 trace", "花了多久", trace, (t) => `<pre>${esc(JSON.stringify(t.spans || t, null, 2).slice(0, 4000))}</pre>`),
+    section("汇总 summary", "结果算好还是坏", summary, (s) => `
+      <table><tbody>
+        <tr><th>状态</th><td>${badge(s.status)}</td></tr>
+        <tr><th>耗时</th><td class="mono">${esc(s.duration_ms)} ms</td></tr>
+        <tr><th>任务</th><td>共 ${s.task_count}　完成 ${s.completed}　失败 ${s.failed}　取消 ${s.cancelled}</td></tr>
+        <tr><th>成功率</th><td class="mono">${esc(s.success_rate)}</td></tr>
+        <tr><th>事件数</th><td class="mono">${esc(s.event_count)}</td></tr>
+        <tr><th>工具调用</th><td class="mono">${esc(s.tool_calls)}</td></tr>
+        <tr><th>Token</th><td class="mono">${s.tokens && s.tokens.input_tokens !== null
+          ? esc(JSON.stringify(s.tokens)) : "未记录（deterministic 路径不调用模型）"}</td></tr>
+      </tbody></table>`),
+  ].join("");
+}
 
-document.getElementById('exec-run').addEventListener('click', async () => {
+/* ── 工具与技能 ── */
+async function loadTools() {
   try {
-    show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/execute`, { method: 'POST' }), 'ok');
-    loadRecentRuns();
-  } catch (error) { showError('run-out', error); }
-});
-
-document.getElementById('cancel-run').addEventListener('click', async () => {
-  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/cancel`, { method: 'POST' }), 'ok'); }
-  catch (error) { showError('run-out', error); }
-});
-
-document.getElementById('resume-run').addEventListener('click', async () => {
-  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/resume`, { method: 'POST' }), 'ok'); }
-  catch (error) { showError('run-out', error); }
-});
-
-document.getElementById('trace-run').addEventListener('click', async () => {
-  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/trace`), 'ok'); }
-  catch (error) { showError('run-out', error); }
-});
-
-document.getElementById('summary-run').addEventListener('click', async () => {
-  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/summary`), 'ok'); }
-  catch (error) { showError('run-out', error); }
-});
-
-document.getElementById('events-run').addEventListener('click', async () => {
-  try { show('run-out', await api(`${RUNTIME}/runs/${encodeURIComponent(currentRun())}/events`), 'ok'); }
-  catch (error) { showError('run-out', error); }
-});
-
-document.getElementById('metrics-all').addEventListener('click', async () => {
+    const tools = await api("/runtime/tools");
+    $("tools-body").innerHTML = tools.length ? `
+      <table><thead><tr><th>工具</th><th>说明</th><th>权限</th><th>需人工确认</th><th class="mono">超时</th><th>来源</th></tr></thead><tbody>
+      ${tools.map((t) => `<tr><td><b>${esc(t.name)}</b></td><td>${esc(t.description)}</td>
+        <td><span class="badge ${t.permission === "read" ? "ok" : "warn"}">${esc(t.permission)}</span></td>
+        <td>${t.requires_human_confirmation ? '<span class="badge warn">是</span>' : '<span class="badge">否</span>'}</td>
+        <td class="mono">${esc(t.timeout_seconds)}s</td><td class="mono">${esc(t.source)} v${esc(t.version)}</td></tr>`).join("")}
+      </tbody></table>` : '<div class="empty">没有注册任何工具</div>';
+  } catch (error) { $("tools-body").innerHTML = `<div class="err">${esc(error.message)}</div>`; }
   try {
-    const response = await fetch(`${RUNTIME}/metrics`);
-    show('run-out', await response.text(), response.ok ? 'ok' : 'bad');
-  } catch (error) { showError('run-out', error); }
-});
+    const skills = await api("/runtime/skills");
+    $("skills-body").innerHTML = skills.length ? `
+      <table><thead><tr><th>技能</th><th>说明</th><th>用到的工具</th></tr></thead><tbody>
+      ${skills.map((s) => `<tr><td><b>${esc(s.name)}</b></td><td>${esc(s.description)}</td>
+        <td class="mono">${esc((s.tool_names || []).join(", "))}</td></tr>`).join("")}
+      </tbody></table>` : '<div class="empty">没有注册任何技能</div>';
+  } catch (error) { $("skills-body").innerHTML = `<div class="err">${esc(error.message)}</div>`; }
+}
 
-document.getElementById('call-tool').addEventListener('click', async () => {
-  const tool = view('tool-name');
-  if (!tool) { toast('工具名不能为空', 'err'); return; }
+async function callTool() {
+  const runId = $("tool-run-id").value.trim();
+  const name = $("tool-name").value.trim();
+  if (!runId || !name) { alert("run_id 和工具名都要填"); return; }
   let payload = {};
-  const raw = view('tool-payload');
-  if (raw) {
-    try { payload = JSON.parse(raw); } catch { toast('负载不是合法 JSON', 'err'); return; }
-  }
+  try { payload = JSON.parse($("tool-payload").value || "{}"); } catch (_) { alert("入参不是合法 JSON"); return; }
   try {
-    show('tool-out', await api(
-      `${RUNTIME}/runs/${encodeURIComponent(currentRun())}/tools/${encodeURIComponent(tool)}`,
-      { method: 'POST', body: { payload } }), 'ok');
-  } catch (error) { showError('tool-out', error); }
-});
-
-document.getElementById('approve').addEventListener('click', async () => {
-  try {
-    show('tool-out', await api(
-      `${RUNTIME}/runs/${encodeURIComponent(currentRun())}/approvals/${encodeURIComponent(view('approval-id'))}`,
-      { method: 'POST' }), 'ok');
-  } catch (error) { showError('tool-out', error); }
-});
-
-document.getElementById('reject').addEventListener('click', async () => {
-  try {
-    show('tool-out', await api(
-      `${RUNTIME}/runs/${encodeURIComponent(currentRun())}/approvals/${encodeURIComponent(view('approval-id'))}/reject`,
-      { method: 'POST' }), 'ok');
-  } catch (error) { showError('tool-out', error); }
-});
-
-document.getElementById('plan-goal').addEventListener('click', async () => {
-  const goal = view('goal');
-  if (!goal) { toast('目标不能为空', 'err'); return; }
-  try { show('plan-out', await api(`${RUNTIME}/planner?goal=${encodeURIComponent(goal)}`), 'ok'); }
-  catch (error) { showError('plan-out', error); }
-});
-
-document.getElementById('load-skills').addEventListener('click', async () => {
-  try {
-    const items = await api(`${RUNTIME}/skills`);
-    const box = document.getElementById('skills');
-    box.innerHTML = `<table><thead><tr><th>名称</th><th>描述</th><th>工具</th></tr></thead><tbody>${
-      items.map(skill => `<tr><td>${escapeHtml(skill.name)}</td><td>${escapeHtml(skill.description)}</td>
-        <td>${escapeHtml((skill.tool_names || []).join(', '))}</td></tr>`).join('')}</tbody></table>`;
-  } catch (error) { document.getElementById('skills').innerHTML = `<span class="muted">${escapeHtml(error.message)}</span>`; }
-});
-
-document.getElementById('load-tools').addEventListener('click', async () => {
-  try {
-    const items = await api(`${RUNTIME}/tools`);
-    const box = document.getElementById('tools');
-    box.innerHTML = `<table><thead><tr><th>名称</th><th>描述</th><th>来源</th></tr></thead><tbody>${
-      items.map(tool => `<tr><td>${escapeHtml(tool.name)}</td><td>${escapeHtml(tool.description)}</td>
-        <td>${escapeHtml(tool.source || '—')}</td></tr>`).join('')}</tbody></table>`;
-  } catch (error) { document.getElementById('tools').innerHTML = `<span class="muted">${escapeHtml(error.message)}</span>`; }
-});
-
-document.getElementById('create-ds').addEventListener('click', async () => {
-  const name = view('ds-name');
-  if (!name) { toast('数据集名称不能为空', 'err'); return; }
-  const types = view('ds-types').split(',').map(s => s.trim()).filter(Boolean);
-  try {
-    const created = await api(`${MULTIMODAL}/datasets`, { method: 'POST', body: { name, source_types: types } });
-    document.getElementById('ds-id').value = created.dataset_id;
-    show('ds-out', created, 'ok');
-    toast('数据集已创建', 'ok');
-  } catch (error) { showError('ds-out', error); }
-});
-
-function dsId() {
-  const id = view('ds-id');
-  if (!id) throw new Error('请先创建或填写数据集 ID');
-  return id;
-}
-
-document.getElementById('ds-load').addEventListener('click', async () => {
-  try { show('ds-out', await api(`${MULTIMODAL}/datasets/${encodeURIComponent(dsId())}`), 'ok'); }
-  catch (error) { showError('ds-out', error); }
-});
-
-document.getElementById('ds-version').addEventListener('click', async () => {
-  try { show('ds-out', await api(`${MULTIMODAL}/datasets/${encodeURIComponent(dsId())}/versions`, { method: 'POST' }), 'ok'); }
-  catch (error) { showError('ds-out', error); }
-});
-
-document.getElementById('ds-split').addEventListener('click', async () => {
-  try { show('ds-out', await api(`${MULTIMODAL}/datasets/${encodeURIComponent(dsId())}/split`, { method: 'POST' }), 'ok'); }
-  catch (error) { showError('ds-out', error); }
-});
-
-document.getElementById('upload').addEventListener('click', async () => {
-  const content = document.getElementById('f-content').value;
-  if (!content) { toast('内容不能为空', 'err'); return; }
-  const bytes = new TextEncoder().encode(content);
-  let binary = '';
-  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
-  const body = {
-    filename: view('f-name') || 'upload.bin',
-    media_type: view('f-type') || 'application/octet-stream',
-    content_base64: btoa(binary),
-  };
-  try { show('ds-out', await api(`${MULTIMODAL}/datasets/${encodeURIComponent(dsId())}/files`, { method: 'POST', body }), 'ok'); }
-  catch (error) { showError('ds-out', error); }
-});
-
-document.getElementById('create-exp').addEventListener('click', async () => {
-  const body = {
-    name: view('exp-name') || 'lora-demo',
-    dataset_id: dsId(),
-    rank: Number(document.getElementById('exp-rank').value),
-    alpha: Number(document.getElementById('exp-alpha').value),
-    learning_rate: Number(document.getElementById('exp-lr').value),
-    epochs: Number(document.getElementById('exp-epochs').value),
-  };
-  try { show('exp-out', await api(`${MULTIMODAL}/experiments`, { method: 'POST', body }), 'ok'); }
-  catch (error) { showError('exp-out', error); }
-});
-
-document.getElementById('list-exp').addEventListener('click', async () => {
-  try { show('exp-out', await api(`${MULTIMODAL}/experiments`), 'ok'); }
-  catch (error) { showError('exp-out', error); }
-});
-
-document.getElementById('mcp-tools').addEventListener('click', async () => {
-  try { show('mcp-out', await api(`${RUNTIME}/mcp/tools`), 'ok'); }
-  catch (error) { showError('mcp-out', error); }
-});
-
-document.getElementById('mcp-metrics').addEventListener('click', async () => {
-  try {
-    const response = await fetch(`${RUNTIME}/metrics`);
-    const body = await response.text();
-    document.getElementById('metrics-out').hidden = false;
-    document.getElementById('metrics-out').className = response.ok ? 'ok' : 'bad';
-    document.getElementById('metrics-out').textContent = body;
-  } catch (error) { showError('metrics-out', error); }
-});
-
-async function loadConfig() {
-  try {
-    const config = await api('/console/api/config');
-    const rows = [
-      ['事件存储', config.event_store_backend],
-      ['模型 Provider', config.model_provider],
-      ['模型名', config.model_name || '（未配置）'],
-      ['模型可用', config.model_configured ? '是' : '否'],
-      ['MCP 远端', config.mcp_remote_configured ? '已配置' : '未配置'],
-      ['MCP 协议', config.mcp_protocol],
-      ['MCP 服务端鉴权', config.mcp_server_auth ? '开启' : '关闭'],
-      ['执行并发', String(config.executor_concurrency)],
-      ['最大重规划', String(config.max_replans)],
-      ['审批 TTL', config.approval_ttl_seconds + 's'],
-      ['上传上限', config.max_upload_bytes + 'B'],
-    ];
-    document.getElementById('config-grid').innerHTML = rows.map(([k, v]) =>
-      `<div class="kv"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v)}</div></div>`).join('');
-    document.getElementById('health').textContent = '运行时 :8001 · 多模态 :8002 · 控制台 :8003';
+    const result = await api(`/runtime/runs/${encodeURIComponent(runId)}/tools/${encodeURIComponent(name)}`, {
+      method: "POST", body: JSON.stringify({ payload }),
+    });
+    $("tool-out").innerHTML = `
+      <table><tbody>
+        <tr><th>状态</th><td>${badge(result.status)}</td></tr>
+        <tr><th>审批 ID</th><td class="mono">${esc(result.approval_id || "无需审批")}</td></tr>
+      </tbody></table>
+      <pre style="margin-top:8px">${esc(JSON.stringify(result.output, null, 2))}</pre>`;
   } catch (error) {
-    document.getElementById('health').textContent = '后端不可用';
-    document.getElementById('config-grid').innerHTML = `<span class="muted">${escapeHtml(error.message)}</span>`;
+    const tip = error.message.includes("already")
+      ? '<p class="hint">这次运行已经结束（completed），不再接受工具调用。换一个刚创建的 run_id，或者先建运行不要执行。</p>'
+      : "";
+    $("tool-out").innerHTML = `<div class="err">${esc(error.message)}</div>${tip}`;
   }
 }
 
-async function loadRecentRuns() {
+/* ── 数据集 ── */
+async function createDataset() {
+  const name = $("ds-name").value.trim();
+  const types = $("ds-types").value.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!name) { alert("填个数据集名字"); return; }
   try {
-    const runId = document.getElementById('run-id').value.trim();
-    if (!runId) { document.getElementById('recent-runs').innerHTML = '<span class="muted">暂无数据</span>'; return; }
-    const run = await api(`${RUNTIME}/runs/${encodeURIComponent(runId)}`);
-    document.getElementById('recent-runs').innerHTML =
-      `<div class="kv"><div class="k">运行 ${escapeHtml(runId)}</div>
-       <div class="v">${escapeHtml(run.status || 'unknown')}</div></div>`;
-  } catch (error) {
-    document.getElementById('recent-runs').innerHTML = `<span class="muted">${escapeHtml(error.message)}</span>`;
-  }
+    const ds = await api("/multimodal/datasets", { method: "POST", body: JSON.stringify({ name, source_types: types }) });
+    $("ds-id").value = ds.dataset_id;
+    $("exp-ds").value = ds.dataset_id;
+    $("ds-body").innerHTML = `<pre>${esc(JSON.stringify(ds, null, 2))}</pre>`;
+  } catch (error) { $("ds-body").innerHTML = `<div class="err">${esc(error.message)}</div>`; }
 }
 
-loadConfig();
+async function loadDataset() {
+  const id = $("ds-id").value.trim();
+  if (!id) { alert("先填 dataset_id"); return; }
+  try {
+    const ds = await api(`/multimodal/datasets/${encodeURIComponent(id)}`);
+    $("ds-body").innerHTML = `<pre>${esc(JSON.stringify(ds, null, 2))}</pre>`;
+  } catch (error) { $("ds-body").innerHTML = `<div class="err">${esc(error.message)}</div>`; }
+}
+
+/* ── 实验 ── */
+async function createExperiment() {
+  const payload = {
+    name: $("exp-name").value.trim(),
+    dataset_id: $("exp-ds").value.trim(),
+    rank: Number($("exp-rank").value),
+    alpha: Number($("exp-alpha").value),
+    learning_rate: Number($("exp-lr").value),
+    epochs: Number($("exp-epochs").value),
+    quant_bits: $("exp-quant").value ? Number($("exp-quant").value) : null,
+  };
+  try {
+    const exp = await api("/multimodal/experiments", { method: "POST", body: JSON.stringify(payload) });
+    $("exp-list").innerHTML = `<pre>${esc(JSON.stringify(exp, null, 2))}</pre>`;
+  } catch (error) { $("exp-list").innerHTML = `<div class="err">${esc(error.message)}</div>`; }
+}
+
+async function loadExperiments() {
+  try {
+    const items = await api("/multimodal/experiments");
+    $("exp-list").innerHTML = items.length ? `
+      <table><thead><tr><th>名称</th><th class="mono">rank</th><th class="mono">alpha</th><th class="mono">lr</th><th class="mono">epochs</th><th>状态</th><th>说明</th></tr></thead><tbody>
+      ${items.map((e) => {
+        const cfg = e.config || {};
+        const why = e.status === "unavailable"
+          ? `<span class="badge warn">${esc(e.error || "runner 不可用")}</span> <span style="color:#8a857b;font-size:11.5px">这台机器没有可用 GPU，没有跑出指标——而不是编一个。</span>`
+          : (e.metrics ? `<span class="mono" style="font-size:11px">${esc(JSON.stringify(e.metrics).slice(0, 90))}</span>` : "—");
+        return `<tr><td><b>${esc(e.name)}</b></td><td class="mono">${esc(cfg.rank ?? "—")}</td><td class="mono">${esc(cfg.alpha ?? "—")}</td>
+          <td class="mono">${esc(cfg.learning_rate ?? "—")}</td><td class="mono">${esc(cfg.epochs ?? "—")}</td>
+          <td>${badge(e.status)}</td><td>${why}</td></tr>`;
+      }).join("")}
+      </tbody></table>` : '<div class="empty">还没有实验。先在上面建一个。</div>';
+  } catch (error) { $("exp-list").innerHTML = `<div class="err">${esc(error.message)}</div>`; }
+}
+
+/* ── 运维 ── */
+function renderOpsConfig(c) {
+  $("ops-config").innerHTML = Object.entries(c).filter(([k]) => k !== "routes").map(([k, v]) =>
+    `<tr><th class="mono">${esc(k)}</th><td class="mono">${esc(typeof v === "boolean" ? (v ? "是" : "否") : v)}</td></tr>`).join("");
+}
+
+async function loadMetrics() {
+  try {
+    const text = await api("/runtime/metrics");
+    $("ops-metrics").innerHTML = `<pre>${esc(typeof text === "string" ? text : JSON.stringify(text, null, 2))}</pre>`;
+  } catch (error) { $("ops-metrics").innerHTML = `<div class="err">${esc(error.message)}</div>`; }
+}
+
+/* ── 绑定 ── */
+$("btn-create").addEventListener("click", () => createRun(false));
+$("btn-create-run").addEventListener("click", () => createRun(true));
+$("btn-inspect").addEventListener("click", inspectRun);
+$("btn-tool").addEventListener("click", callTool);
+$("btn-ds").addEventListener("click", createDataset);
+$("btn-ds-get").addEventListener("click", loadDataset);
+$("btn-exp").addEventListener("click", createExperiment);
+$("btn-metrics").addEventListener("click", loadMetrics);
+
+loadStatus();
+loadTools();
+loadExperiments();
 </script>
 </body>
 </html>
