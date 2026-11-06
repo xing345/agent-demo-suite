@@ -82,7 +82,8 @@ def test_console_explains_what_the_project_is_for() -> None:
     body = client.get("/").text
 
     for needle in [
-        "Agent 运行时实验台",
+        "运行时实验台",
+        "可观测、可审批、可回放",
         "它干了什么",
         "谁批准的",
         "挂了能续吗",
