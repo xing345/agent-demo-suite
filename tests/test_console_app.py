@@ -103,7 +103,9 @@ def test_console_ui_contracts_match_the_real_payloads() -> None:
     import json
     from pathlib import Path
 
-    page = Path("apps/console/static/index.html").read_text(encoding="utf-8")
+    page = (Path(__file__).resolve().parents[1] / "apps/console/static/index.html").read_text(
+        encoding="utf-8"
+    )
 
     # 实验参数嵌套在 config 下
     assert "e.config || {}" in page

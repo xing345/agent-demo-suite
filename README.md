@@ -1,9 +1,20 @@
 # Agent Demo Suite
 
-面向 Agent 开发工程师岗位的综合演示项目：Agent Runtime + Planner + Tool Use + MCP +
-Skill Registry + Model Provider + HITL + Checkpoint + RAG + 多模态数据处理 + Observability。
+从零实现的一套 Agent 运行时骨架：状态机 + Planner + Tool Use + MCP + Skill Registry +
+Model Gateway + HITL + Checkpoint + RAG + 多模态数据处理 + Observability，共 11 个可独立替换的
+基础包和 2 个应用层 API。
 
-## 组成
+设计前提是**不伪造**：没有配置模型时不产生 token 与成本，没有 GPU 时 LoRA 实验记为
+`unavailable`，RAG 评测语料是合成的、指标已饱和——所以本仓库的成果全部用**测试数量与行为断言**
+来表达，而不是用效果指标。
+
+## 规模
+
+| 项 | 数量 |
+|---|---|
+| `packages/` | 60 个 Python 文件，约 3,400 行 |
+| `apps/` | 11 个 Python 文件，约 1,300 行 |
+| 测试 | 42 个测试文件，**206 条用例全部通过** |
 
 | 模块 | 职责 |
 |---|---|
@@ -25,7 +36,7 @@ Skill Registry + Model Provider + HITL + Checkpoint + RAG + 多模态数据处�
 
 ```powershell
 python -m pip install -e ".[dev]"
-python -m pytest tests -q                 # 204 tests
+python -m pytest tests -q                 # 206 passed
 python -m ruff check .                    # lint
 python -m mypy                            # types
 python scripts/check_skeleton.py          # 结构 + 导入冒烟
@@ -66,6 +77,20 @@ python -m uvicorn apps.multimodal_lora.main:app --reload --port 8002
   `MODEL_PRICE_TABLE` 为 `{"model":[输入价, 输出价]}`（USD/1M tokens），未配置则成本为 `null`。
 - `MCP_REMOTE_URL` / `MCP_PROTOCOL` / `MCP_RETRIES`；服务端 `MCP_SERVER_TOKEN`。
 - `EXECUTOR_CONCURRENCY`、`MAX_REPLANS`、`APPROVAL_TTL_SECONDS`、`UPLOAD_DIR`、`MAX_UPLOAD_BYTES`。
+
+## 自审修复记录
+
+这份代码经过一轮逐文件审计，下列问题是审计中实际发现并修掉的，均有回归用例钉住：
+
+| 问题 | 后果 | 修复 |
+|---|---|---|
+| `packages/runtime/executor.py` 的 `_collect` 在超时后仍会重试 | 同一个副作用可能并发执行两份 | 超时直接返回失败，不再重试 |
+| `tests/test_console_app.py` 硬编码相对路径 `apps/console/static/index.html` | 换工作目录运行即失败，CI 上必红 | 改为基于 `__file__` 定位 |
+| `tests/test_event_store.py` 的 SQLite 库文件建在 CWD | 同上的目录依赖问题 | 改用 `tmp_path` |
+
+审计中另外发现、**尚未处理**的问题：`runtime_harness/engine.py` 的 `call_tool` 单次调用就会把
+Run 置为 `completed` 且绕过 timeout/retry；`skill_registry` 目前只是元数据字典；
+`multimodal/experiments.py` 的实验记录只存内存。
 
 ## 明确的限制
 

@@ -22,8 +22,8 @@ def test_event_store_keeps_events_in_append_order() -> None:
     ]
 
 
-def test_sqlite_event_store_round_trips_trace() -> None:
-    database = Path(".test-events.sqlite3")
+def test_sqlite_event_store_round_trips_trace(tmp_path: Path) -> None:
+    database = tmp_path / ".test-events.sqlite3"
     try:
         store = SQLiteEventStore(database)
         session = store.create_session()
