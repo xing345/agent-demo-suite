@@ -19,6 +19,8 @@ class Replanner:
     def __init__(self, planner: Planner, *, max_replans: int = 2) -> None:
         self.planner = planner
         self.max_replans = max(0, max_replans)
+        # 最近一次换计划失败的原因，供日志与测试使用；成功或未执行时为 None
+        self.last_error: str | None = None
 
     def next_plan(
         self,
@@ -78,7 +80,17 @@ class Replanner:
             planner_version=f"replan:{plan.planner_version}",
             replan_count=attempt,
         )
-        validate_plan(new_plan, known_tools=known_tools)
+        try:
+            validate_plan(new_plan, known_tools=known_tools)
+        except Exception as exc:  # noqa: BLE001 - 校验失败等于「换不出新计划」
+            # 重规划是尽力而为的补救：保留已完成的祖先、追加一段新任务后会变深。
+            # 深度超限（DEPTH_EXCEEDED）只有重规划才会触发——原始计划是校验过的，
+            # 而这里的异常会打穿 execute_plan，把一次普通的任务失败变成 500，
+            # 运行状态停在 running 永不复位。既然补救计划本身不合法，
+            # 就当作「换不出新计划」交给上游按失败处理，而不是让整次运行崩掉。
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            return None
+        self.last_error = None
         return new_plan
 
     def _ancestors(self, by_id: dict[str, PlannedTask], task_id: str) -> set[str]:

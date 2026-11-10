@@ -163,6 +163,35 @@ engine.register_tool(
     ),
     lambda payload: {"accepted": True, "target": payload.get("path", "")},
 )
+
+
+def _echo_goal(payload: dict[str, object]) -> dict[str, object]:
+    """演示用工具：把上游传来的目标回显出去。
+
+    以前引擎找不到同名工具时会静默回落到 lambda payload: payload["query"]，
+    而这个键在调用约定里根本不存在，于是每个「读取/分析」类任务都以
+    KeyError: 'query' 失败。任务失败没错，错在原因是一句跟任务无关的 KeyError，
+    演示的人以为是自己漏填了东西。现在回落到一个明确标注 demo、且不挑键的实现。
+    """
+    return {
+        "mode": "demo_echo",
+        "goal": payload.get("goal", ""),
+        "task": payload.get("description", "") or payload.get("task_id", ""),
+    }
+
+
+engine.register_tool(
+    ToolDefinition(name="read_repository", permission="read"),
+    _echo_goal,
+)
+engine.register_tool(
+    ToolDefinition(name="analyze_dependencies", permission="read"),
+    _echo_goal,
+)
+engine.register_tool(
+    ToolDefinition(name="generate_issue_list", permission="read"),
+    _echo_goal,
+)
 mcp_router = create_mcp_router(
     mcp_server,
     authenticator=(

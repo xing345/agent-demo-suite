@@ -8,6 +8,7 @@ approvals in ``packages.runtime.approvals`` and checkpoint payloads in
 
 from __future__ import annotations
 
+import json
 import threading
 from collections.abc import Callable
 from time import perf_counter
@@ -42,6 +43,47 @@ TERMINAL_STATUSES: frozenset[str] = frozenset({"completed", "failed", "cancelled
 InvalidStateTransition = InvalidTransition
 
 DEFAULT_TOOL_TIMEOUT_SECONDS = 30.0
+
+# 模型明确表示「这件事我做不了」时返回的 status 取值（小写后比较）
+_BLOCKING_STATUSES: frozenset[str] = frozenset(
+    {"blocked", "incomplete", "needs_input", "unable"}
+)
+
+
+def blocking_reason(output: dict[str, Any] | None) -> str | None:
+    """Return the model's own reason when the output says the task could not be done.
+
+    模型执行的任务不走工具注册表，它的「结果」就是一段 JSON。抛异常当然是失败，
+    但模型返回 ``{"status": "blocked", "reason": "未提供仓库路径"}`` 时它其实已经
+    明确说了「做不了」，如果还记成 completed，运行摘要就会显示 100% 成功，
+    把真正缺的输入藏起来。这里把这种情况翻译成失败，并保留模型给出的原因。
+    """
+    if not isinstance(output, dict):
+        return None
+    raw_status = output.get("status")
+    if not isinstance(raw_status, str) or raw_status.strip().lower() not in _BLOCKING_STATUSES:
+        return None
+    reason = output.get("reason") or output.get("error") or output.get("message")
+    if not isinstance(reason, str) or not reason.strip():
+        reason = None
+    return reason or f"模型返回 status={raw_status.strip()}"
+
+
+def _blocked_output_error(output: dict[str, Any] | None) -> str | None:
+    """Only JSON-shaped output can carry a model verdict; plain text is never one."""
+    if not isinstance(output, dict) or set(output) != {"content"}:
+        return None
+    content = output.get("content")
+    if not isinstance(content, str):
+        return None
+    text = content.strip()
+    if not text.startswith("{"):
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return blocking_reason(parsed)
 
 
 class ToolCallResult(BaseModel):
@@ -300,6 +342,19 @@ class RuntimeEngine:
                 task = self.store.get_task(planned.task_id)
                 attempts[planned.task_id] = attempts.get(planned.task_id, 0) + outcome.attempts
                 task.metadata["attempts"] = attempts[planned.task_id]
+                # 模型自己说「做不了」时不能算成功：否则运行摘要会显示 100% 成功，
+                # 把真正缺的输入（例如没给仓库路径）藏起来。
+                verdict = _blocked_output_error(outcome.output)
+                if verdict is not None:
+                    outcome = AttemptResult(
+                        task_id=outcome.task_id,
+                        ok=False,
+                        output=outcome.output,
+                        error=f"模型判定无法完成：{verdict}",
+                        error_type="BlockedByModel",
+                        attempts=outcome.attempts,
+                        latency_ms=outcome.latency_ms,
+                    )
                 if outcome.ok:
                     task.metadata["output"] = outcome.output
                     self._set_task_status(task, "completed")
@@ -472,6 +527,9 @@ class RuntimeEngine:
             return call_model
 
         def fallback(payload: dict[str, Any]) -> dict[str, Any]:
+            # 兜底必须对所有任务都成立：这里以前写死了 payload["query"]，
+            # 而调用约定里根本没有这个键，于是每个读取/分析类任务都挂在
+            # KeyError: 'query' 上——失败原因与任务本身毫无关系。
             return {
                 "mode": "deterministic_fallback",
                 "task": planned.name,

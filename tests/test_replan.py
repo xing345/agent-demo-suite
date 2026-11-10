@@ -83,3 +83,42 @@ def test_replan_emits_nothing_when_budget_is_zero() -> None:
     replanner = Replanner(DeterministicPlanner(), max_replans=0)
 
     assert replanner.next_plan(_plan(), failed_task_id="t1", error="x") is None
+
+class _FixedPlanner:
+    """Planner that always returns the same sub-plan, to control depth exactly."""
+
+    def __init__(self, tasks: list[PlannedTask]) -> None:
+        self._tasks = tasks
+
+    def plan(self, goal: str) -> TaskPlan:
+        return TaskPlan(goal=goal, tasks=list(self._tasks), planner_version="fixed/1")
+
+
+def test_replan_returns_none_instead_of_raising_when_new_plan_is_too_deep() -> None:
+    """重规划把失败的后半段换成更长的子计划时，深度可能超过 8。
+
+    这条路径原来会抛 ValidationError，一路打穿 execute_plan 变成 HTTP 500，
+    运行状态停在 running 永不复位。补救计划不合法就应当「换不出来」，交给
+    上游按失败处理。
+    """
+    deep_sub_plan = [
+        PlannedTask(task_id=f"s{i}", name=f"step{i}", description=f"step{i}",
+                    depends_on=[] if i == 1 else [f"s{i - 1}"])
+        for i in range(1, 10)
+    ]
+    replanner = Replanner(_FixedPlanner(deep_sub_plan), max_replans=2)
+
+    result = replanner.next_plan(
+        _plan(), failed_task_id="t3", error="boom", completed_ids=["t1", "t2"]
+    )
+
+    assert result is None
+    assert replanner.last_error is not None
+    assert "DEPTH_EXCEEDED" in replanner.last_error
+
+
+def test_successful_replan_clears_last_error() -> None:
+    replanner = Replanner(DeterministicPlanner(), max_replans=2)
+
+    assert replanner.next_plan(_plan(), failed_task_id="t2", error="x") is not None
+    assert replanner.last_error is None
