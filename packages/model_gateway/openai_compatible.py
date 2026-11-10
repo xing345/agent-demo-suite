@@ -75,6 +75,60 @@ def _post_stream(
         raise ModelGatewayError(f"model provider network error: {exc.reason}") from exc
 
 
+def _response_format_rejected(error: BaseException) -> bool:
+    """provider 是不是明确表示"不支持这个 response_format"。
+
+    DeepSeek 等 OpenAI 兼容服务对 ``response_format`` 的 ``json_schema`` 档位并不都支持，
+    返回的是 HTTP 400 + ``"This response_format type is unavailable now"``。
+    这类错误重试多少次都不会成功——参数不被接受和网络抖动是两回事，
+    所以必须识别出来交给降级逻辑，而不是计入重试次数。
+    """
+    if not isinstance(error, ModelGatewayError):
+        return False
+    text = str(error).lower()
+    if "response_format" not in text:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "unavailable",
+            "not supported",
+            "not_supported",
+            "unsupported",
+            "invalid_request_error",
+        )
+    )
+
+
+def _extract_json_object(text: str) -> Any:
+    """从自由文本里抠出 JSON 对象。
+
+    没有 json_schema 约束时，模型经常把 JSON 包在 ```json 围栏里，
+    或者在前后加一句"好的，计划如下："。直接 json.loads 必然失败。
+    """
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        # 去掉 ```json / ``` 围栏
+        lines = cleaned.split("\n")
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(cleaned[start : end + 1])
+        except json.JSONDecodeError:
+            pass
+    raise json.JSONDecodeError("no JSON object found in response", cleaned, 0)
+
+
 class OpenAICompatibleGateway(ModelGateway):
     def __init__(
         self,
@@ -161,7 +215,18 @@ class OpenAICompatibleGateway(ModelGateway):
         response_model: Any | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ChatResult:
-        """One chat call that also reports usage, tool calls and latency."""
+        """One chat call that also reports usage, tool calls and latency.
+
+        ``response_format`` 按能力逐级降级
+        ----------------------------------
+        ``json_schema``（strict）→ ``json_object`` → 不加约束、靠提示词与容错解析。
+        原因：OpenAI 兼容服务对结构化输出的支持程度差别很大，
+        DeepSeek 对 ``json_schema`` 直接返回 HTTP 400
+        ``"This response_format type is unavailable now"``。
+
+        降级是"立即换下一档"，不计入重试次数：参数被服务端拒绝，重试一百次还是同一个结果，
+        只是把一次失败变成三次慢失败。
+        """
         payload = self._chat_payload(messages, tools=tools, metadata=metadata)
         if response_model is not None:
             payload["response_format"] = {
@@ -174,12 +239,46 @@ class OpenAICompatibleGateway(ModelGateway):
             }
 
         started = perf_counter()
-        data = self.post_json(
-            f"{self.base_url}/chat/completions",
-            self.headers,
-            payload,
-            self.timeout_seconds,
-        )
+        downgrades: list[str] = []
+        data: dict[str, Any] | None = None
+        if response_model is None:
+            data = self.post_json(
+                f"{self.base_url}/chat/completions",
+                self.headers,
+                payload,
+                self.timeout_seconds,
+            )
+        else:
+            for mode in ("json_schema", "json_object", "none"):
+                if mode == "json_schema":
+                    payload["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": getattr(response_model, "__name__", "response"),
+                            "schema": response_model.model_json_schema(),
+                            "strict": True,
+                        },
+                    }
+                elif mode == "json_object":
+                    payload["response_format"] = {"type": "json_object"}
+                else:
+                    payload.pop("response_format", None)
+
+                try:
+                    data = self.post_json(
+                        f"{self.base_url}/chat/completions",
+                        self.headers,
+                        payload,
+                        self.timeout_seconds,
+                    )
+                    break
+                except ModelGatewayError as exc:
+                    if not _response_format_rejected(exc):
+                        raise
+                    downgrades.append(mode)
+                    if mode == "none":
+                        raise
+
         latency_ms = int((perf_counter() - started) * 1000)
 
         try:
@@ -194,8 +293,12 @@ class OpenAICompatibleGateway(ModelGateway):
         structured: Any | None = None
         if response_model is not None:
             try:
-                structured = response_model.model_validate(json.loads(content))
-            except (json.JSONDecodeError, ValueError) as exc:
+                structured = response_model.model_validate(_extract_json_object(content))
+            except json.JSONDecodeError as exc:
+                raise ModelGatewayError(
+                    "structured model response is not valid JSON for the schema"
+                ) from exc
+            except ValueError as exc:
                 raise ModelGatewayError(
                     "structured model response is not valid JSON for the schema"
                 ) from exc
